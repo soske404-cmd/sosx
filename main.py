@@ -166,10 +166,16 @@ def check_card(card_details, heroku_auth_key):
 
         heroku_token_response = requests.post(heroku_token_url, headers=heroku_headers)
         
+        # Debug: Print Heroku response
+        print(f"Heroku Status: {heroku_token_response.status_code}")
+        
         # Check if response is valid JSON
         try:
             heroku_token_data = heroku_token_response.json()
-        except:
+            print(f"Heroku Response: {heroku_token_data}")
+        except Exception as json_err:
+            print(f"JSON parse error: {json_err}")
+            print(f"Raw response: {heroku_token_response.text[:500]}")
             return f"{RED}Invalid Heroku response (Status: {heroku_token_response.status_code}){RESET}"
         
         if heroku_token_data is None:
@@ -346,6 +352,8 @@ def check_card(card_details, heroku_auth_key):
     except requests.exceptions.RequestException as e:
         return f"{RED}Request failed: {str(e)}{RESET}"
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return f"{RED}Card check failed: {str(e)}{RESET}"
 
 def start_card_check():
