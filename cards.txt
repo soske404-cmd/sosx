@@ -1,0 +1,5 @@
+# Add cards here, one per line
+# Format: cc|mm|yy|cvv or cc|mm|yyyy|cvv
+# Example:
+# 4403934091847371|06|26|097
+# 377679811470240|05|29|3542
