@@ -278,6 +278,10 @@ def check_card(card_details, heroku_auth_key):
             if response_body is None:
                 return f"{RED}Empty response from Stripe confirm{RESET}"
 
+            # Debug: Print response code and full body
+            print(f"Stripe confirm status: {response_code}", flush=True)
+            print(f"Stripe confirm body: {response_body}", flush=True)
+
             if response_code == 402:
                 error_obj = response_body.get('error') or {}
                 decline_code = error_obj.get('decline_code')
