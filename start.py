@@ -325,11 +325,11 @@ async def handle_callbacks(client, callback_query):
 ⟐ <b>Status</b>: <code>Active ✅</code> 
 ⟐ <b>Note</b> : <code>Only For Premium Users</code> 
 ═══════════════════
-⟐ <b>Name</b>: <code>Stripe Auth</code>
-⟐ <b>Command</b>: <code>$au cc|mes|ano|cvv</code>
+⟐ <b>Name</b>: <code>AutoStripe Charge</code>
+⟐ <b>Command</b>: <code>/au cc|mes|ano|cvv</code>
 ⟐ <b>Status</b>: <code>Active ✅</code>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$mau cc|mes|ano|cvv</code>
+⟐ <b>Mass Cmd</b>: <code>/mau cc|mes|ano|cvv</code>
 ⟐ <b>Limit</b>: <code>As Per User's Plan</code>
 ⟐ <b>Status: Active ✅</b>
 """
@@ -348,7 +348,7 @@ async def handle_callbacks(client, callback_query):
         charge_buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("Shopify", callback_data="shopify"),
-                InlineKeyboardButton("[SELF SHOPIFY]", callback_data="auto")
+                InlineKeyboardButton("[AUTOSTRIPE]", callback_data="auto")
             ],
             [
                 InlineKeyboardButton("Braintree", callback_data="braintree"),
@@ -392,18 +392,18 @@ async def handle_callbacks(client, callback_query):
         )
 
     elif data == "auto":
-        auto_text = """<pre>#SelfShopify 〔Charge〕</pre>
+        auto_text = """<pre>#AutoStripe 〔Charge〕</pre>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>$addurl</b>: <code>Add Site in Bot Private</code>
-⟐ <b>$sh</b>: <code>$sh cc|mes|ano|cvv [Free In Group]</code>
+⟐ <b>/addurl</b>: <code>Add Site in Bot Private</code>
+⟐ <b>/au</b>: <code>/au cc|mes|ano|cvv [Single Check]</code>
 ⟐ <b>Status: Active ✅</b>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$msh cc|mes|ano|cvv</code>
-⟐ <b>Limit</b>: <code>9 ccs / Site / 15min</code>
+⟐ <b>Mass Cmd</b>: <code>/mau cc|mes|ano|cvv</code>
+⟐ <b>Limit</b>: <code>As Per User's Plan</code>
 ⟐ <b>Status: Active ✅</b>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$tsh cc|mes|ano|cvv</code>
-⟐ <b>Status: Dead ❌</b>
+⟐ <b>/mysite</b>: <code>View your current site</code>
+⟐ <b>/delsite</b>: <code>Remove your site</code>
 """
         auto_buttons = InlineKeyboardMarkup([
             [
