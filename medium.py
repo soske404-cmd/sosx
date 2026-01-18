@@ -1,6 +1,7 @@
 """
 Medium.com Card Checker for Pydroid3
 Full $5 Charge Gate with Multiple Cookie Rotation
+Auto-detects cookies from pasted code blocks
 """
 
 import requests
@@ -47,21 +48,28 @@ def get_bin_info(cc):
         pass
     return f"BIN: {cc[:6]}"
 
-def parse_cookie_dict(text):
-    """Parse Python dict format cookies"""
+def extract_cookies_from_block(block):
+    """Extract cookies from a cookies = { ... } block"""
     cookies = {}
     
     # Find all 'key': 'value' patterns
-    pattern = r"['\"]([^'\"]+)['\"]\s*:\s*['\"]([^'\"]+)['\"]"
-    matches = re.findall(pattern, text)
+    pattern = r"['\"]([^'\"]+)['\"]\s*:\s*['\"]([^'\"]*)['\"]"
+    matches = re.findall(pattern, block)
     
     for key, value in matches:
-        cookies[key] = value
+        # Only keep cookie-like keys (not headers)
+        if key not in ['authority', 'accept', 'accept-language', 'content-type', 
+                       'origin', 'referer', 'user-agent', 'sec-ch-ua', 'sec-ch-ua-mobile',
+                       'sec-ch-ua-platform', 'sec-fetch-dest', 'sec-fetch-mode', 
+                       'sec-fetch-site', 'apollographql-client-name', 'apollographql-client-version',
+                       'graphql-operation', 'medium-frontend-app', 'medium-frontend-path',
+                       'medium-frontend-route', 'operationName', 'query', 'payload']:
+            cookies[key] = value
     
     return cookies
 
 def load_all_cookies():
-    """Load multiple cookie sets from cookies.txt"""
+    """Load multiple cookie sets from cookies.txt - auto detects from pasted code"""
     
     if not os.path.exists(COOKIE_FILE):
         return []
@@ -71,38 +79,26 @@ def load_all_cookies():
     
     cookie_sets = []
     
-    # Split by "cookies = {" or empty lines between dict blocks
-    # Find all cookie dict blocks
-    blocks = re.split(r'\n\s*\n', content)
+    # Find all "cookies = {" blocks using regex
+    # This pattern finds cookies = { ... } blocks
+    cookie_block_pattern = r'cookies\s*=\s*\{([^}]+)\}'
+    matches = re.findall(cookie_block_pattern, content, re.DOTALL)
     
-    for block in blocks:
-        block = block.strip()
+    for match in matches:
+        block = '{' + match + '}'
+        cookies = extract_cookies_from_block(block)
         
-        # Skip comments and empty blocks
-        if not block or block.startswith('#'):
-            continue
-        
-        # Skip if it's headers or json_data block
-        if 'headers' in block.lower() and 'authority' in block:
-            continue
-        if 'json_data' in block.lower():
-            continue
-        if 'operationName' in block:
-            continue
-        
-        # Check if it contains cookie data
-        if 'uid' in block and 'sid' in block:
-            cookies = parse_cookie_dict(block)
-            if cookies and 'uid' in cookies and 'sid' in cookies:
-                cookie_sets.append(cookies)
+        # Only add if it has required cookies (uid and sid)
+        if cookies and 'uid' in cookies and 'sid' in cookies:
+            cookie_sets.append(cookies)
     
-    # Remove duplicates based on uid
-    seen_uids = set()
+    # Remove duplicates based on uid+sid combination
+    seen = set()
     unique_sets = []
     for cookies in cookie_sets:
-        uid = cookies.get('uid', '')
-        if uid and uid not in seen_uids:
-            seen_uids.add(uid)
+        key = cookies.get('uid', '') + cookies.get('sid', '')
+        if key and key not in seen:
+            seen.add(key)
             unique_sets.append(cookies)
     
     return unique_sets
@@ -392,33 +388,28 @@ def main():
         print(f"[!] No cookies found in {COOKIE_FILE}!")
         print(f"\n[*] Creating {COOKIE_FILE}...")
         with open(COOKIE_FILE, 'w') as f:
-            f.write("""# Paste your Medium cookies here
-# You can add multiple cookie sets - they will be rotated
+            f.write("""# Just paste your full code blocks here
+# The checker will auto-detect cookies = { } blocks
+# You can paste multiple code blocks with different accounts
 
-# === COOKIE SET 1 ===
+# Example - just paste this format:
 cookies = {
     'uid': 'your_uid_here',
     'sid': 'your_sid_here',
     'xsrf': 'your_xsrf_here',
 }
 
-# === COOKIE SET 2 ===
-cookies = {
-    'uid': 'another_uid',
-    'sid': 'another_sid',
-    'xsrf': 'another_xsrf',
-}
-
-# Add more cookie sets below...
+# Paste more code blocks below for rotation...
 """)
-        print(f"[*] Please add cookies to {COOKIE_FILE}")
-        print("[*] You can add multiple cookie sets for rotation!")
+        print(f"[*] Please paste your code blocks to {COOKIE_FILE}")
+        print("[*] Auto-detects uid, sid, xsrf from cookies = {{ }} blocks")
         return
     
-    print(f"[+] Loaded {len(all_cookies)} cookie set(s)")
+    print(f"[+] Auto-detected {len(all_cookies)} cookie set(s)")
     for i, cookies in enumerate(all_cookies, 1):
-        uid = cookies.get('uid', 'N/A')[:8]
-        print(f"    [{i}] uid: {uid}...")
+        uid = cookies.get('uid', 'N/A')[:10]
+        has_xsrf = 'Yes' if cookies.get('xsrf') else 'No'
+        print(f"    [{i}] uid: {uid}... | xsrf: {has_xsrf}")
     
     # Check cards.txt
     if not os.path.exists(INPUT_FILE):
@@ -496,7 +487,6 @@ cookies = {
             
         elif status == 'RATE_LIMIT':
             print(f"[!] Rate Limited on cookie {cookie_uid}")
-            # Try next cookie
             cookie_index = (cookie_index + 1) % len(all_cookies)
             print(f"[*] Switching to next cookie...")
             time.sleep(5)
@@ -507,14 +497,12 @@ cookies = {
             print(f"[-] {message}")
             errors += 1
             
-            # Check if cookie expired
             if 'unauthorized' in message.lower() or 'login' in message.lower() or 'not authenticated' in message.lower():
                 print(f"[!] Cookie {cookie_uid} expired!")
-                # Remove this cookie and try next
                 if len(all_cookies) > 1:
                     all_cookies.pop(cookie_index)
                     cookie_index = cookie_index % len(all_cookies)
-                    print(f"[*] Switching to next cookie ({len(all_cookies)} remaining)")
+                    print(f"[*] Removed bad cookie ({len(all_cookies)} remaining)")
                 else:
                     print("[!] No more valid cookies!")
                     break
@@ -527,7 +515,7 @@ cookies = {
         
         print(f"[*] {elapsed}s")
         
-        # Rotate to next cookie for next card
+        # Rotate to next cookie
         cookie_index = (cookie_index + 1) % len(all_cookies)
         
         if i < total:
