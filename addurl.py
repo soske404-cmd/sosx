@@ -4,7 +4,7 @@ import time
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
-from autostripe_api import verify_autostripe_site
+from BOT.Charge.AutoStripe.api import verify_autostripe_site
 
 SITES_PATH = "DATA/sites.json"
 TEST_CARD = "4342562842964445|04|26|568"

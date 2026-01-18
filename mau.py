@@ -5,13 +5,13 @@ import asyncio
 from pyrogram import Client, filters
 from pyrogram.enums import ChatType
 
-# Import helper modules
-from autostripe_api import check_autostripe, get_autostripe_info
-from autostripe_response import get_status_flag
-from start import load_users
-from proxy import get_proxy
-from permissions import check_private_access, load_allowed_groups
-from credit import deduct_credit_bulk
+# Import helper modules from BOT structure
+from BOT.Charge.AutoStripe.api import check_autostripe, get_autostripe_info
+from BOT.Charge.AutoStripe.response import get_status_flag
+from BOT.helper.start import load_users
+from BOT.tools.proxy import get_proxy
+from BOT.helper.permissions import check_private_access, load_allowed_groups
+from BOT.gc.credit import deduct_credit_bulk
 
 user_locks = {}
 

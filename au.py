@@ -5,13 +5,13 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ChatType
 
-# Import helper modules
-from start import load_users
-from antispam import can_run_command
-from permissions import check_private_access, load_allowed_groups
-from autostripe_api import check_autostripe, get_autostripe_info
-from autostripe_response import format_autostripe_response
-from credit import has_credits, deduct_credit
+# Import helper modules from BOT structure
+from BOT.helper.start import load_users
+from BOT.helper.antispam import can_run_command
+from BOT.helper.permissions import check_private_access, load_allowed_groups
+from BOT.Charge.AutoStripe.api import check_autostripe, get_autostripe_info
+from BOT.Charge.AutoStripe.response import format_autostripe_response
+from BOT.gc.credit import has_credits, deduct_credit
 
 def extract_card(text):
     """Extract card details from text"""
