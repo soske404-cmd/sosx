@@ -1,0 +1,6 @@
+pyrogram>=2.0.0
+tgcrypto
+httpx
+flask
+pytz
+nest_asyncio

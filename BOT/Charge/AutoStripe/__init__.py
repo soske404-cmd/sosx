@@ -1,0 +1,1 @@
+# AutoStripe modules

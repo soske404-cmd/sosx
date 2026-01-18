@@ -1,53 +1,3 @@
-
-# import json
-# import asyncio
-# from pyrogram import Client, idle
-# from BOT.plans.plan1 import check_and_expire_plans as plan1_expiry
-# from BOT.plans.plan2 import check_and_expire_plans as plan2_expiry
-# from BOT.plans.plan3 import check_and_expire_plans as plan3_expiry
-# from BOT.plans.plan4 import check_and_expire_plans as plan4_expiry
-# from BOT.plans.redeem import check_and_expire_redeem_plans as redeem_expiry
-
-# # Load bot credentials
-# with open("FILES/config.json", "r", encoding="utf-8") as f:
-#     DATA = json.load(f)
-#     API_ID = DATA["API_ID"]
-#     API_HASH = DATA["API_HASH"]
-#     BOT_TOKEN = DATA["BOT_TOKEN"]
-
-# # Plugin directory
-# plugins = dict(root="BOT")
-
-# # Create bot instance
-# bot = Client(
-#     "MY_BOT",
-#     api_id=API_ID,
-#     api_hash=API_HASH,
-#     bot_token=BOT_TOKEN,
-#     plugins=plugins
-# )
-
-# async def main():
-#     await bot.start()
-#     print("✅ Bot is running...")
-
-#     # Start background tasks for all plans
-#     asyncio.create_task(plan1_expiry(bot))
-#     asyncio.create_task(plan2_expiry(bot))
-#     asyncio.create_task(plan3_expiry(bot))
-#     asyncio.create_task(plan4_expiry(bot))
-#     asyncio.create_task(redeem_expiry(bot))
-
-#     await idle()
-#     await bot.stop()
-#     print("❌ Bot stopped.")
-
-# if __name__ == "__main__":
-#     import nest_asyncio
-#     nest_asyncio.apply()
-#     asyncio.run(main())
-
-
 import json
 import asyncio
 import threading
@@ -66,7 +16,7 @@ with open("FILES/config.json", "r", encoding="utf-8") as f:
     API_HASH = DATA["API_HASH"]
     BOT_TOKEN = DATA["BOT_TOKEN"]
 
-# Pyrogram plugins
+# Pyrogram plugins - loads all handlers from BOT folder
 plugins = dict(root="BOT")
 
 # Pyrogram client
@@ -78,7 +28,7 @@ bot = Client(
     plugins=plugins
 )
 
-# Flask App
+# Flask App for keep-alive
 app = Flask(__name__)
 
 @app.route("/")
@@ -91,6 +41,8 @@ def run_flask():
 async def run_bot():
     await bot.start()
     print("✅ Bot is running...")
+    print("✅ AutoStripe Checker Active!")
+    print("✅ Commands: /au, /mau, /addurl")
 
     # Background plan expiry tasks
     asyncio.create_task(plan1_expiry(bot))
