@@ -165,11 +165,20 @@ def check_card(card_details, heroku_auth_key):
         }
 
         heroku_token_response = requests.post(heroku_token_url, headers=heroku_headers)
-        heroku_token_data = heroku_token_response.json()
+        
+        # Check if response is valid JSON
+        try:
+            heroku_token_data = heroku_token_response.json()
+        except:
+            return f"{RED}Invalid Heroku response (Status: {heroku_token_response.status_code}){RESET}"
+        
+        if heroku_token_data is None:
+            return f"{RED}Empty Heroku response{RESET}"
 
         token = heroku_token_data.get('token')
         if not token:
-            return f"{RED}Failed to retrieve Heroku token{RESET}"
+            error_msg = heroku_token_data.get('message', 'Unknown error')
+            return f"{RED}Failed to retrieve Heroku token: {error_msg}{RESET}"
 
         token_first_part = token.split('_secret_')[0]
 
@@ -204,7 +213,19 @@ def check_card(card_details, heroku_auth_key):
         }
 
         first_response = requests.post('https://api.stripe.com/v1/payment_methods', headers=stripe_headers, data=post_data)
-        first_response_data = first_response.json()
+        
+        try:
+            first_response_data = first_response.json()
+        except:
+            return f"{RED}Invalid Stripe response{RESET}"
+        
+        if first_response_data is None:
+            return f"{RED}Empty Stripe response{RESET}"
+
+        # Check for Stripe error in first response
+        if 'error' in first_response_data:
+            error_msg = first_response_data.get('error', {}).get('message', 'Unknown error')
+            return f"{RED}{error_msg}{RESET}"
 
         payment_method_id = first_response_data.get('id')
         if payment_method_id:
@@ -241,7 +262,14 @@ def check_card(card_details, heroku_auth_key):
 
 
             response_code = second_response.status_code
-            response_body = second_response.json()
+            
+            try:
+                response_body = second_response.json()
+            except:
+                return f"{RED}Invalid response from Stripe confirm{RESET}"
+            
+            if response_body is None:
+                return f"{RED}Empty response from Stripe confirm{RESET}"
 
             if response_code == 402:
                 decline_code = response_body.get('error', {}).get('decline_code')
