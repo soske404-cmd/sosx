@@ -74,11 +74,34 @@ def extract_card(text):
         return match.groups()
     return None
 
+def clean_response(raw_response):
+    """Clean and extract only the important response message"""
+    response = str(raw_response).strip()
+    
+    # Try to extract message from JSON-like response
+    if '"response"' in response.lower() or '"message"' in response.lower():
+        try:
+            import re
+            match = re.search(r'"(?:response|message)"\s*:\s*"([^"]+)"', response, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        except:
+            pass
+    
+    # Clean common prefixes
+    response = response.replace('{', '').replace('}', '').replace('"', '')
+    
+    # If response is too long, truncate
+    if len(response) > 100:
+        response = response[:100]
+    
+    return response
+
 def get_status_flag(raw_response):
     response_upper = str(raw_response).upper()
     
     if any(keyword in response_upper for keyword in [
-        "CHARGED", "ORDER_PLACED", "ORDER PLACED", "THANK YOU", "PAYMENT SUCCESS", "APPROVED"
+        "CHARGED", "ORDER_PLACED", "ORDER PLACED", "THANK YOU", "PAYMENT SUCCESS"
     ]):
         return "Charged 💎"
     elif any(keyword in response_upper for keyword in [
@@ -86,15 +109,10 @@ def get_status_flag(raw_response):
         "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS", "INVALID_CVC", "INVALID CVC",
         "INCORRECT_CVC", "INCORRECT CVC", "CVV", "CVC", "AUTHENTICATION",
         "ZIP", "ADDRESS", "BILLING", "CARD_ERROR", "CARD ERROR", "RISK", "FRAUD",
-        "LIMIT", "DO_NOT_HONOR", "DO NOT HONOR", "LOST", "STOLEN", "TRY_AGAIN"
+        "LIMIT", "DO_NOT_HONOR", "DO NOT HONOR", "LOST", "STOLEN", "TRY_AGAIN",
+        "APPROVED"
     ]):
         return "Approved ✅"
-    elif any(keyword in response_upper for keyword in [
-        "DECLINED", "DECLINE", "REJECTED", "REJECT", "FAILED", "FAIL", "DEAD",
-        "INVALID CARD", "INVALID_CARD", "CARD_DECLINED", "CARD DECLINED",
-        "NOT SUPPORTED", "UNSUPPORTED", "EXPIRED", "BLOCKED"
-    ]):
-        return "Declined ❌"
     else:
         return "Declined ❌"
 
@@ -103,11 +121,11 @@ async def check_autostripe(site, cc):
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.get(url)
-            return response.text.strip() if response.text else "NO_RESPONSE"
+            return response.text.strip() if response.text else "No Response"
     except httpx.TimeoutException:
-        return "Request Timeout"
-    except Exception as e:
-        return f"Error: {str(e)}"
+        return "Timeout"
+    except:
+        return "Error"
 
 @Client.on_message(filters.command("au") | filters.regex(r"^\.au(\s|$)"))
 async def handle_autostripe(client, message):
@@ -181,24 +199,25 @@ async def handle_autostripe(client, message):
         end_time = time()
         timetaken = round(end_time - start_time, 2)
         
+        # Clean the response
+        clean_result = clean_response(result)
         status_flag = get_status_flag(result)
+        
         profile = f"<a href='tg://user?id={user_id}'>{message.from_user.first_name}</a>"
         
         user_data = users.get(user_id, {})
         plan = user_data.get("plan", {}).get("plan", "Free")
         badge = user_data.get("plan", {}).get("badge", "🎟️")
         
-        final_msg = f"""
-<b>[#AutoStripe] | Sync</b> ✦
+        final_msg = f"""<b>[#AutoStripe] | Sync</b> ✦
 ━━━━━━━━━━━━━━━
 <b>[•] Card</b>- <code>{fullcc}</code>
 <b>[•] Gateway</b> - <b>{gate}</b>
 <b>[•] Status</b>- <code>{status_flag}</code>
-<b>[•] Response</b>- <code>{result}</code>
+<b>[•] Response</b>- <code>{clean_result}</code>
 ━━━━━━━━━━━━━━━
 <b>[ﾒ] Checked By</b>: {profile} [<code>{plan} {badge}</code>]
-<b>[ﾒ] T/t</b>: <code>[{timetaken} 𝐬]</code>
-"""
+<b>[ﾒ] T/t</b>: <code>[{timetaken} 𝐬]</code>"""
         
         buttons = InlineKeyboardMarkup([
             [
@@ -212,5 +231,4 @@ async def handle_autostripe(client, message):
         deduct_credit(user_id)
     
     except Exception as e:
-        print(f"Error in /au: {e}")
-        await message.reply(f"<code>Error: {str(e)}</code>", reply_to_message_id=message.id)
+        await message.reply(f"<code>Error occurred</code>", reply_to_message_id=message.id)

