@@ -67,20 +67,41 @@ def clean_response(raw_response):
     """Clean and extract only the important response message"""
     response = str(raw_response).strip()
     
-    if '"response"' in response.lower() or '"message"' in response.lower():
-        try:
-            match = re.search(r'"(?:response|message)"\s*:\s*"([^"]+)"', response, re.IGNORECASE)
-            if match:
-                return match.group(1)
-        except:
-            pass
+    # Try to parse as JSON and extract response/message field
+    try:
+        import json as js
+        data = js.loads(response)
+        if isinstance(data, dict):
+            # Look for common response keys
+            for key in ['response', 'message', 'msg', 'error', 'status', 'result']:
+                if key in data:
+                    return str(data[key])[:60]
+    except:
+        pass
     
-    response = response.replace('{', '').replace('}', '').replace('"', '')
+    # Try regex to extract response field
+    try:
+        match = re.search(r'"(?:response|message|msg)"\s*:\s*"([^"]+)"', response, re.IGNORECASE)
+        if match:
+            return match.group(1)[:60]
+    except:
+        pass
     
-    if len(response) > 80:
-        response = response[:80]
+    # Clean up JSON-like characters
+    response = response.replace('{', '').replace('}', '').replace('"', '').replace("'", "")
+    response = re.sub(r'response\s*:', '', response, flags=re.IGNORECASE).strip()
+    response = re.sub(r'message\s*:', '', response, flags=re.IGNORECASE).strip()
     
-    return response
+    # Remove common prefixes
+    for prefix in ['response:', 'message:', 'error:', 'result:']:
+        if response.lower().startswith(prefix):
+            response = response[len(prefix):].strip()
+    
+    # Truncate if too long
+    if len(response) > 60:
+        response = response[:60]
+    
+    return response if response else "No Response"
 
 def get_status_flag(raw_response):
     response_upper = str(raw_response).upper()

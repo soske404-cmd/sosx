@@ -78,24 +78,38 @@ def clean_response(raw_response):
     """Clean and extract only the important response message"""
     response = str(raw_response).strip()
     
-    # Try to extract message from JSON-like response
-    if '"response"' in response.lower() or '"message"' in response.lower():
-        try:
-            import re
-            match = re.search(r'"(?:response|message)"\s*:\s*"([^"]+)"', response, re.IGNORECASE)
-            if match:
-                return match.group(1)
-        except:
-            pass
+    # Try to parse as JSON and extract response/message field
+    try:
+        import json as js
+        data = js.loads(response)
+        if isinstance(data, dict):
+            for key in ['response', 'message', 'msg', 'error', 'status', 'result']:
+                if key in data:
+                    return str(data[key])[:80]
+    except:
+        pass
     
-    # Clean common prefixes
-    response = response.replace('{', '').replace('}', '').replace('"', '')
+    # Try regex to extract response field
+    try:
+        match = re.search(r'"(?:response|message|msg)"\s*:\s*"([^"]+)"', response, re.IGNORECASE)
+        if match:
+            return match.group(1)[:80]
+    except:
+        pass
     
-    # If response is too long, truncate
-    if len(response) > 100:
-        response = response[:100]
+    # Clean up JSON-like characters
+    response = response.replace('{', '').replace('}', '').replace('"', '').replace("'", "")
+    response = re.sub(r'response\s*:', '', response, flags=re.IGNORECASE).strip()
+    response = re.sub(r'message\s*:', '', response, flags=re.IGNORECASE).strip()
     
-    return response
+    for prefix in ['response:', 'message:', 'error:', 'result:']:
+        if response.lower().startswith(prefix):
+            response = response[len(prefix):].strip()
+    
+    if len(response) > 80:
+        response = response[:80]
+    
+    return response if response else "No Response"
 
 def get_status_flag(raw_response):
     response_upper = str(raw_response).upper()
