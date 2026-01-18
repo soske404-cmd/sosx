@@ -48,13 +48,26 @@ def format_autostripe_response(cc, mes, ano, cvv, raw_response, timet, profile):
     # Determine status based on response
     response_upper = raw_response.upper()
     
-    if any(keyword in response_upper for keyword in ["CHARGED", "SUCCESS", "ORDER_PLACED", "THANK YOU"]):
+    # Charged keywords
+    if any(keyword in response_upper for keyword in ["CHARGED", "ORDER_PLACED", "THANK YOU", "PAYMENT SUCCESS"]):
         status_flag = "Charged 💎"
+    # Approved keywords (including succeed)
     elif any(keyword in response_upper for keyword in [
-        "3DS", "3D_SECURE", "INSUFFICIENT_FUNDS", "INVALID_CVC", "INCORRECT_CVC",
-        "CVV", "CVC", "AUTHENTICATION", "ZIP", "ADDRESS", "BILLING"
+        "SUCCEED", "SUCCESS", "3DS", "3D_SECURE", "3D SECURE",
+        "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS", 
+        "INVALID_CVC", "INVALID CVC", "INCORRECT_CVC", "INCORRECT CVC",
+        "CVV", "CVC", "AUTHENTICATION", "ZIP", "ADDRESS", "BILLING",
+        "CARD_ERROR", "CARD ERROR", "RISK", "FRAUD", "LIMIT",
+        "DO_NOT_HONOR", "DO NOT HONOR", "LOST", "STOLEN"
     ]):
         status_flag = "Approved ✅"
+    # Declined keywords
+    elif any(keyword in response_upper for keyword in [
+        "DECLINED", "DECLINE", "REJECTED", "REJECT", "FAILED", "FAIL",
+        "INVALID CARD", "INVALID_CARD", "CARD_DECLINED", "CARD DECLINED",
+        "NOT SUPPORTED", "UNSUPPORTED", "EXPIRED", "DEAD"
+    ]):
+        status_flag = "Declined ❌"
     else:
         status_flag = "Declined ❌"
     
@@ -106,12 +119,25 @@ def get_status_flag(raw_response):
     """Determine status flag from response text"""
     response_upper = str(raw_response).upper()
     
-    if any(keyword in response_upper for keyword in ["CHARGED", "SUCCESS", "ORDER_PLACED", "THANK YOU"]):
+    # Charged keywords
+    if any(keyword in response_upper for keyword in ["CHARGED", "ORDER_PLACED", "THANK YOU", "PAYMENT SUCCESS"]):
         return "Charged 💎"
+    # Approved keywords (including succeed)
     elif any(keyword in response_upper for keyword in [
-        "3DS", "3D_SECURE", "INSUFFICIENT_FUNDS", "INVALID_CVC", "INCORRECT_CVC",
-        "CVV", "CVC", "AUTHENTICATION", "ZIP", "ADDRESS", "BILLING", "MISMATCHED"
+        "SUCCEED", "SUCCESS", "3DS", "3D_SECURE", "3D SECURE",
+        "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS",
+        "INVALID_CVC", "INVALID CVC", "INCORRECT_CVC", "INCORRECT CVC",
+        "CVV", "CVC", "AUTHENTICATION", "ZIP", "ADDRESS", "BILLING", "MISMATCHED",
+        "CARD_ERROR", "CARD ERROR", "RISK", "FRAUD", "LIMIT",
+        "DO_NOT_HONOR", "DO NOT HONOR", "LOST", "STOLEN"
     ]):
         return "Approved ✅"
+    # Declined keywords
+    elif any(keyword in response_upper for keyword in [
+        "DECLINED", "DECLINE", "REJECTED", "REJECT", "FAILED", "FAIL",
+        "INVALID CARD", "INVALID_CARD", "CARD_DECLINED", "CARD DECLINED",
+        "NOT SUPPORTED", "UNSUPPORTED", "EXPIRED", "DEAD"
+    ]):
+        return "Declined ❌"
     else:
         return "Declined ❌"

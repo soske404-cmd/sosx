@@ -80,25 +80,13 @@ async def check_autostripe(user_id, cc, site=None):
         return "Connection Failed (Max Retries)"
     
     # Parse the response
-    raw_response = data.get("Response", data.get("response", str(data)))
+    raw_response = data.get("Response", data.get("response", data.get("message", str(data))))
     
-    # Determine status based on response keywords
-    response_upper = str(raw_response).upper()
-    
-    if any(keyword in response_upper for keyword in ["CHARGED", "SUCCESS", "APPROVED", "ORDER_PLACED", "THANK YOU"]):
-        return raw_response if raw_response else "CHARGED"
-    elif "3DS" in response_upper or "3D_SECURE" in response_upper or "3D SECURE" in response_upper:
-        return "3DS_REQUIRED"
-    elif "CVV" in response_upper or "CVC" in response_upper:
-        return raw_response if raw_response else "CVV_ERROR"
-    elif any(keyword in response_upper for keyword in ["DECLINED", "REJECT", "FAILED", "INVALID"]):
-        return raw_response if raw_response else "DECLINED"
-    elif "INSUFFICIENT" in response_upper:
-        return "INSUFFICIENT_FUNDS"
-    elif "RATE LIMIT" in response_upper or "RATELIMIT" in response_upper:
-        return "RATE_LIMITED"
+    # Return raw response as-is (let response.py handle status classification)
+    if raw_response:
+        return str(raw_response)
     else:
-        return raw_response if raw_response else "UNKNOWN_RESPONSE"
+        return "NO_RESPONSE"
 
 async def verify_autostripe_site(site, test_cc):
     """
