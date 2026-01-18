@@ -316,7 +316,7 @@ def check_card(card_details, heroku_auth_key):
                     return result
                 elif status == 'requires_action':
                     # Debug: Print full response to see where decline info is
-                    print(f"Full response: {response_body}")
+                    print(f"Full response: {response_body}", flush=True)
                     
                     # Check for decline reason in last_payment_error
                     last_error = response_body.get('last_payment_error') or {}
