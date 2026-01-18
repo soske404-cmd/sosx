@@ -322,16 +322,16 @@ async def handle_callbacks(client, callback_query):
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
 ⟐ <b>Name</b>: <code>Braintree Auth HQ</code>
 ⟐ <b>Command</b>: <code>$b3 cc|mes|ano|cvv</code>
-⟐ <b>Status</b>: <code>Active ✅</code> 
+⟐ <b>Status</b>: <code>Active</code> 
 ⟐ <b>Note</b> : <code>Only For Premium Users</code> 
 ═══════════════════
-⟐ <b>Name</b>: <code>Stripe Auth</code>
-⟐ <b>Command</b>: <code>$au cc|mes|ano|cvv</code>
-⟐ <b>Status</b>: <code>Active ✅</code>
+⟐ <b>Name</b>: <code>Autostripe</code>
+⟐ <b>Command</b>: <code>/au cc|mes|ano|cvv</code>
+⟐ <b>Status</b>: <code>Active</code>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$mau cc|mes|ano|cvv</code>
+⟐ <b>Mass Cmd</b>: <code>/mau cc|mes|ano|cvv</code>
 ⟐ <b>Limit</b>: <code>As Per User's Plan</code>
-⟐ <b>Status: Active ✅</b>
+⟐ <b>Status: Active</b>
 """
         auth_buttons = InlineKeyboardMarkup([
             [
@@ -347,12 +347,12 @@ async def handle_callbacks(client, callback_query):
     elif data == "charge":
         charge_buttons = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("Shopify", callback_data="shopify"),
-                InlineKeyboardButton("[SELF SHOPIFY]", callback_data="auto")
+                InlineKeyboardButton("Autostripe", callback_data="auto"),
+                InlineKeyboardButton("Stripe", callback_data="stripe")
             ],
             [
                 InlineKeyboardButton("Braintree", callback_data="braintree"),
-                InlineKeyboardButton("Stripe", callback_data="stripe")
+                InlineKeyboardButton("Shopify", callback_data="shopify")
             ],
             [
                 InlineKeyboardButton("Back", callback_data="gates"),
@@ -392,18 +392,18 @@ async def handle_callbacks(client, callback_query):
         )
 
     elif data == "auto":
-        auto_text = """<pre>#SelfShopify 〔Charge〕</pre>
+        auto_text = """<pre>#Autostripe 〔Charge〕</pre>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>$addurl</b>: <code>Add Site in Bot Private</code>
-⟐ <b>$sh</b>: <code>$sh cc|mes|ano|cvv [Free In Group]</code>
-⟐ <b>Status: Active ✅</b>
+⟐ <b>/addurl</b>: <code>Add Site in Bot Private</code>
+⟐ <b>/au</b>: <code>/au cc|mes|ano|cvv [Single Check]</code>
+⟐ <b>Status: Active</b>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$msh cc|mes|ano|cvv</code>
-⟐ <b>Limit</b>: <code>9 ccs / Site / 15min</code>
-⟐ <b>Status: Active ✅</b>
+⟐ <b>Mass Cmd</b>: <code>/mau cc|mes|ano|cvv</code>
+⟐ <b>Limit</b>: <code>As Per User's Plan</code>
+⟐ <b>Status: Active</b>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$tsh cc|mes|ano|cvv</code>
-⟐ <b>Status: Dead ❌</b>
+⟐ <b>/myurl</b>: <code>View Your Current Site</code>
+⟐ <b>/delurl</b>: <code>Remove Your Site</code>
 """
         auto_buttons = InlineKeyboardMarkup([
             [
