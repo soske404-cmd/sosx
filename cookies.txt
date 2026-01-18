@@ -1,12 +1,39 @@
 # Paste your Medium cookies here
-# Format: uid=xxx; sid=xxx; xsrf=xxx
-# 
-# How to get cookies:
-# 1. Login to medium.com on your browser
-# 2. Open DevTools (F12) > Application > Cookies > medium.com
-# 3. Copy these cookie values: uid, sid, xsrf
-#
-# Example:
-# uid=b5570d256c44; sid=1:SJceTV06Og/u172xjMv92kZFXeqkq9zlFYHWaeZRwh8DeNEJaDl1tBLIZ91c8js7; xsrf=kzvqx3aPa7pqIW1B
-#
-# Paste your cookies below (remove the # at start):
+# You can add multiple cookie sets - they will be rotated
+# Just paste the cookies = { ... } blocks below
+
+# === COOKIE SET 1 ===
+cookies = {
+    '_cfuvid': 'K.nGLw3q1pQ8SZQQbDvNdPVxClTSUEt39sMGDxuJeXI-1768765708440-0.0.1.1-604800000',
+    'cf_clearance': 'RC_7WUIJwf974jESuRWFwwC7rudU2NOpAnMSOPZVscA-1768765710-1.2.1.1-kCQc7o7WnHAEy.5IkRDa7gkxgl29bpKkiEMF.LFv61KjUqGu8nMgcVqttmXH1ZP3TIXryY8bFIbfrFVtc7WIzSGjGLJLtOBLuuE3QTV5TQwBYt8pEqj2OdBBG0LwNt4lZ.S5xN1kNPTM_KjMq2LyeAdPVT46PB3F.NkX9qK2aCDuFnMd_gHgmJFT77tNf5vW5NB4CBDpYzSFk9ncy1zH2oNDeIzfM_8X1Lta4vuBWyY',
+    '_ga': 'GA1.1.873924637.1768765712',
+    'sz': '360',
+    'pr': '3',
+    'tz': '-330',
+    'uid': 'b5570d256c44',
+    'sid': '1:SJceTV06Og/u172xjMv92kZFXeqkq9zlFYHWaeZRwh8DeNEJaDl1tBLIZ91c8js7',
+    'xsrf': 'kzvqx3aPa7pqIW1B',
+    '_ga_7JY7T788PK': 'GS2.1.s1768765712$o1$g1$t1768765833$j53$l0$h0',
+    '__stripe_mid': '0826b9f0-b690-4adb-a0f9-7d902f310fc43ed771',
+    '__stripe_sid': '6a6d774f-54df-4d1c-9bfe-5010c2ef333a3a3b60',
+    '_dd_s': 'rum=0&expire=1768766774793',
+}
+
+# === COOKIE SET 2 ===
+cookies = {
+    '_ga': 'GA1.1.873924637.1768765712',
+    'sz': '360',
+    'pr': '3',
+    'tz': '-330',
+    'uid': 'b5570d256c44',
+    'sid': '1:SJceTV06Og/u172xjMv92kZFXeqkq9zlFYHWaeZRwh8DeNEJaDl1tBLIZ91c8js7',
+    'xsrf': 'kzvqx3aPa7pqIW1B',
+    '__stripe_mid': '0826b9f0-b690-4adb-a0f9-7d902f310fc43ed771',
+    '__stripe_sid': '6a6d774f-54df-4d1c-9bfe-5010c2ef333a3a3b60',
+    '_cfuvid': 'yjAXCBykPpdW14MYyr0cT8P9FQU7FwHDusRXhLoifQ0-1768767128887-0.0.1.1-604800000',
+    'cf_clearance': 'n0GCjjL3.y66CN7qk8XZ05f_ZhdtMCTAp2J7a16437A-1768767130-1.2.1.1-9PZq6JSVKkA0ZouDf9PkrOaH216iZqXIrRVG1I0sK0iJY8Zqu_bXNZ43J.G_KWGL8ygMyVJCj9.lyxRcxpB98exDVdEvLQtel1YeLJ6UDnvED6f0Wwho_i6m6boJWdF3WZ2v4OreYRij3S_QJbCyUHK4Il8Ipu_1FquP3fwi.qySCGBh.f8S5a5.Gn4J3OpFcgP5UwJat9wURXHmF8cE1Bz0d7IimcRVUP1p10rOAuA',
+    '_ga_7JY7T788PK': 'GS2.1.s1768765712$o1$g1$t1768767148$j44$l0$h0',
+    '_dd_s': 'rum=0&expire=1768768090455',
+}
+
+# Add more cookie sets below...
