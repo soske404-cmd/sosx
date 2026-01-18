@@ -265,7 +265,7 @@ async def show_cmds(client, message):
     )
 
 
-@Client.on_callback_query(filters.regex("^(exit|home|gates|tools|auth|charge|shopify|auto|braintree|stripe)$"))
+@Client.on_callback_query(filters.regex("^(exit|home|gates|tools|auth|charge|autostripe|braintree|stripe)$"))
 async def handle_callbacks(client, callback_query):
     data = callback_query.data
 
@@ -273,13 +273,12 @@ async def handle_callbacks(client, callback_query):
         await callback_query.message.edit_text("<pre>Thanks For Using #Sync</pre>")
 
     elif data == "home":
-        # Home text jab home button click kare
-        home_text = """<pre>JOIN BEFORE USING. ✔️</pre>
+        home_text = """<pre>JOIN BEFORE USING.</pre>
 <b>~ Main :</b> <b><a href="https://t.me/SyncUI">Join Now</a></b>
 <b>~ Chat Group :</b> <b><a href="https://t.me/SyncUI">Join Now</a></b>
 <b>~ Scrapper :</b> <b><a href="https://t.me/SyncUI">Join Now</a></b>
 <b>~ Note :</b> <code>Report Bugs To @syncblastbot</code>
-<b>~ Proxy :</b> <code>Live 💎</code>
+<b>~ Proxy :</b> <code>Live</code>
 <pre>Choose Your Gate Type :</pre>"""
 
         home_buttons = InlineKeyboardMarkup([
@@ -299,14 +298,13 @@ async def handle_callbacks(client, callback_query):
         )
 
     elif data == "gates":
-        # Gates ke andar jaake buttons dikhao
         gates_buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("Auth", callback_data="auth"),
                 InlineKeyboardButton("Charge", callback_data="charge")
             ],
             [
-                InlineKeyboardButton("Back", callback_data="home")  # yaha se home jaayega
+                InlineKeyboardButton("Back", callback_data="home")
             ]
         ])
 
@@ -318,20 +316,20 @@ async def handle_callbacks(client, callback_query):
         )
 
     elif data == "auth":
-        auth_text = """<pre>#Sync 〔AUTH GATES〕</pre>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Name</b>: <code>Braintree Auth HQ</code>
-⟐ <b>Command</b>: <code>$b3 cc|mes|ano|cvv</code>
-⟐ <b>Status</b>: <code>Active ✅</code> 
-⟐ <b>Note</b> : <code>Only For Premium Users</code> 
-═══════════════════
-⟐ <b>Name</b>: <code>Stripe Auth</code>
-⟐ <b>Command</b>: <code>$au cc|mes|ano|cvv</code>
-⟐ <b>Status</b>: <code>Active ✅</code>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$mau cc|mes|ano|cvv</code>
-⟐ <b>Limit</b>: <code>As Per User's Plan</code>
-⟐ <b>Status: Active ✅</b>
+        auth_text = """<pre>#Sync [AUTH GATES]</pre>
+-------------------
+> <b>Name</b>: <code>Braintree Auth HQ</code>
+> <b>Command</b>: <code>$b3 cc|mes|ano|cvv</code>
+> <b>Status</b>: <code>Active</code> 
+> <b>Note</b> : <code>Only For Premium Users</code> 
+-------------------
+> <b>Name</b>: <code>AutoStripe Auth</code>
+> <b>Command</b>: <code>/au cc|mes|ano|cvv</code>
+> <b>Status</b>: <code>Active</code>
+-------------------
+> <b>Mass Cmd</b>: <code>/mau cc|mes|ano|cvv</code>
+> <b>Limit</b>: <code>As Per User's Plan</code>
+> <b>Status: Active</b>
 """
         auth_buttons = InlineKeyboardMarkup([
             [
@@ -347,12 +345,11 @@ async def handle_callbacks(client, callback_query):
     elif data == "charge":
         charge_buttons = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("Shopify", callback_data="shopify"),
-                InlineKeyboardButton("[SELF SHOPIFY]", callback_data="auto")
+                InlineKeyboardButton("AutoStripe", callback_data="autostripe"),
+                InlineKeyboardButton("Stripe", callback_data="stripe")
             ],
             [
-                InlineKeyboardButton("Braintree", callback_data="braintree"),
-                InlineKeyboardButton("Stripe", callback_data="stripe")
+                InlineKeyboardButton("Braintree", callback_data="braintree")
             ],
             [
                 InlineKeyboardButton("Back", callback_data="gates"),
@@ -360,72 +357,49 @@ async def handle_callbacks(client, callback_query):
             ]
         ])
 
-        charge_text = "<pre>#Sync 〔 Charge 〕</pre>"
+        charge_text = "<pre>#Sync [ Charge ]</pre>"
 
         await callback_query.message.edit_text(
             charge_text,
             reply_markup=charge_buttons
         )
 
-    elif data == "shopify":
-        shopify_text = """<pre>#Shopify 〔Charge〕</pre>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Name</b>: <code>Shopify 1$</code>
-⟐ <b>Command</b>: <code>$sho cc|mes|ano|cvv</code>
-⟐ <b>Status: Dead ❌</b>
-
-<pre>#Shopify 〔Charge〕</pre>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Name</b>: <code>Shopify 1$</code>
-⟐ <b>Command</b>: <code>$sg cc|mes|ano|cvv</code>
-⟐ <b>Status: Dead ❌</b>
+    elif data == "autostripe":
+        autostripe_text = """<pre>#AutoStripe [Charge]</pre>
+-------------------
+> <b>/addurl</b>: <code>Add Site in Bot Private</code>
+> <b>/au</b>: <code>/au cc|mm|yy|cvv [Single Check]</code>
+> <b>Status: Active</b>
+-------------------
+> <b>Mass Cmd</b>: <code>/mau cc|mm|yy|cvv</code>
+> <b>Limit</b>: <code>As Per User's Plan</code>
+> <b>Status: Active</b>
+-------------------
+> <b>Site Commands</b>:
+> <code>/mysite</code> - View your site
+> <code>/delsite</code> - Remove your site
 """
-        shopify_buttons = InlineKeyboardMarkup([
+        autostripe_buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("Back", callback_data="charge"),
                 InlineKeyboardButton("Close", callback_data="exit")
             ]
         ])
         await callback_query.message.edit_text(
-            shopify_text,
-            reply_markup=shopify_buttons
-        )
-
-    elif data == "auto":
-        auto_text = """<pre>#SelfShopify 〔Charge〕</pre>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>$addurl</b>: <code>Add Site in Bot Private</code>
-⟐ <b>$sh</b>: <code>$sh cc|mes|ano|cvv [Free In Group]</code>
-⟐ <b>Status: Active ✅</b>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$msh cc|mes|ano|cvv</code>
-⟐ <b>Limit</b>: <code>9 ccs / Site / 15min</code>
-⟐ <b>Status: Active ✅</b>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$tsh cc|mes|ano|cvv</code>
-⟐ <b>Status: Dead ❌</b>
-"""
-        auto_buttons = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Back", callback_data="charge"),
-                InlineKeyboardButton("Close", callback_data="exit")
-            ]
-        ])
-        await callback_query.message.edit_text(
-            auto_text,
-            reply_markup=auto_buttons
+            autostripe_text,
+            reply_markup=autostripe_buttons
         )
 
     elif data == "stripe":
-        stripe_text = """<pre>#Stripe 〔Charge〕</pre>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Name</b>: <code>Stripe 1$</code>
-⟐ <b>Command</b>: <code>$mag cc|mes|ano|cvv</code>
-⟐ <b>Status: Active ✅</b>
-━ ━ ━ ━ ━━━ ━ ━ ━ ━
-⟐ <b>Mass Cmd</b>: <code>$mmag cc|mes|ano|cvv</code>
-⟐ <b>Limit</b>: <code>As Per User's Plan</code>
-⟐ <b>Status: Active ✅</b>
+        stripe_text = """<pre>#Stripe [Charge]</pre>
+-------------------
+> <b>Name</b>: <code>Stripe 1$</code>
+> <b>Command</b>: <code>$mag cc|mes|ano|cvv</code>
+> <b>Status: Active</b>
+-------------------
+> <b>Mass Cmd</b>: <code>$mmag cc|mes|ano|cvv</code>
+> <b>Limit</b>: <code>As Per User's Plan</code>
+> <b>Status: Active</b>
 """
         stripe_buttons = InlineKeyboardMarkup([
             [
