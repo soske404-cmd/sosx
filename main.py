@@ -224,7 +224,8 @@ def check_card(card_details, heroku_auth_key):
 
         # Check for Stripe error in first response
         if 'error' in first_response_data:
-            error_msg = first_response_data.get('error', {}).get('message', 'Unknown error')
+            error_obj = first_response_data.get('error') or {}
+            error_msg = error_obj.get('message', 'Unknown error')
             return f"{RED}{error_msg}{RESET}"
 
         payment_method_id = first_response_data.get('id')
@@ -272,8 +273,9 @@ def check_card(card_details, heroku_auth_key):
                 return f"{RED}Empty response from Stripe confirm{RESET}"
 
             if response_code == 402:
-                decline_code = response_body.get('error', {}).get('decline_code')
-                error_message = response_body.get('error', {}).get('message', 'Unknown error')
+                error_obj = response_body.get('error') or {}
+                decline_code = error_obj.get('decline_code')
+                error_message = error_obj.get('message', 'Unknown error')
                 if decline_code == 'generic_decline':
                     return f"{RED}The card has been declined (Generic){RESET}"
                 elif decline_code == 'expired_card':
@@ -308,7 +310,7 @@ def check_card(card_details, heroku_auth_key):
                     return result
                 elif status == 'requires_action':
                     # Check for decline reason in last_payment_error
-                    last_error = response_body.get('last_payment_error', {})
+                    last_error = response_body.get('last_payment_error') or {}
                     decline_code = last_error.get('decline_code')
                     error_message = last_error.get('message', '')
                     
