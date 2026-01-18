@@ -28,7 +28,7 @@ def get_autostripe_info(user_id):
 async def check_autostripe(user_id, cc, site=None):
     """
     Check card using AutoStripe API
-    Endpoint format: /gateway=autostripe/key=Blackxcard/site=example.com/cc=card|mm|yyyy|cvv
+    Endpoint: /gateway=autostripe/key=Blackxcard/site=example.com/cc=card|mm|yyyy|cvv
     """
     if not site:
         site = get_autostripe_site(user_id)
@@ -39,58 +39,38 @@ async def check_autostripe(user_id, cc, site=None):
     url = f"{AUTOSTRIPE_BASE_URL}/gateway={AUTOSTRIPE_GATEWAY}/key={AUTOSTRIPE_KEY}/site={site}/cc={cc}"
     
     retries = 0
-    while retries < 3:
+    max_retries = 3
+    
+    while retries < max_retries:
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.get(url)
+                response_text = response.text.strip()
                 
-                # Try to parse JSON response
-                try:
-                    data = response.json()
-                except:
-                    data = {"Response": response.text}
-                
-                response_text = str(data.get("Response", data.get("response", data.get("message", str(data))))).upper()
-                
-                # Check for connection errors that warrant retry
-                if any(err in response_text for err in [
-                    "SERVER DISCONNECTED",
-                    "CONNECTION ERROR",
-                    "PEER CLOSED CONNECTION",
-                    "INCOMPLETE CHUNKED READ"
-                ]):
-                    retries += 1
-                    await asyncio.sleep(1)
-                    continue
-                
-                break
+                # Return raw response
+                if response_text:
+                    return response_text
+                else:
+                    return "NO_RESPONSE"
                 
         except httpx.ReadTimeout:
-            return "Request Timeout"
+            retries += 1
+            if retries >= max_retries:
+                return "Request Timeout"
+            await asyncio.sleep(1)
         except httpx.ConnectError:
             retries += 1
-            if retries >= 3:
+            if retries >= max_retries:
                 return "Connection Failed"
             await asyncio.sleep(1)
-            continue
         except Exception as e:
             return f"Error: {str(e)}"
     
-    if retries == 3:
-        return "Connection Failed (Max Retries)"
-    
-    # Parse the response
-    raw_response = data.get("Response", data.get("response", data.get("message", str(data))))
-    
-    # Return raw response as-is (let response.py handle status classification)
-    if raw_response:
-        return str(raw_response)
-    else:
-        return "NO_RESPONSE"
+    return "Connection Failed"
 
 async def verify_autostripe_site(site, test_cc):
     """
-    Verify if a site is supported by AutoStripe
+    Verify if a site works with AutoStripe
     Returns dict with site info if supported, None otherwise
     """
     url = f"{AUTOSTRIPE_BASE_URL}/gateway={AUTOSTRIPE_GATEWAY}/key={AUTOSTRIPE_KEY}/site={site}/cc={test_cc}"
@@ -98,25 +78,28 @@ async def verify_autostripe_site(site, test_cc):
     try:
         async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.get(url)
+            response_text = response.text.strip()
             
-            try:
-                data = response.json()
-            except:
-                data = {"Response": response.text}
-            
-            # Check if site is supported (has valid response)
-            response_text = str(data.get("Response", data.get("response", "")))
-            
-            # If we get a response (even declined), site is supported
-            if response_text and "NOT SUPPORTED" not in response_text.upper() and "INVALID SITE" not in response_text.upper():
-                return {
-                    "supported": True,
-                    "response": response_text,
-                    "gateway": "AutoStripe",
-                    "data": data
-                }
+            # If we get any response, site is working
+            if response_text and len(response_text) > 0:
+                # Check if it's not an error response
+                response_upper = response_text.upper()
+                if "NOT FOUND" not in response_upper and "INVALID" not in response_upper and "ERROR" not in response_upper:
+                    return {
+                        "supported": True,
+                        "response": response_text,
+                        "gateway": "AutoStripe"
+                    }
+                else:
+                    # Even error responses mean site is connected
+                    return {
+                        "supported": True,
+                        "response": response_text,
+                        "gateway": "AutoStripe"
+                    }
             
             return None
             
     except Exception as e:
+        print(f"[verify_autostripe_site error] {e}")
         return None

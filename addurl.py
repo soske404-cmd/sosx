@@ -1,21 +1,26 @@
 import os
 import json
 import time
+import httpx
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
-from BOT.Charge.AutoStripe.api import verify_autostripe_site
 
 SITES_PATH = "DATA/sites.json"
-TEST_CARD = "4342562842964445|04|26|568"
+TEST_CARD = "4403934091847371|06|2026|097"
+
+# AutoStripe API Config
+AUTOSTRIPE_BASE_URL = "https://blackxcard-autostripe.onrender.com"
+AUTOSTRIPE_GATEWAY = "autostripe"
+AUTOSTRIPE_KEY = "Blackxcard"
 
 @Client.on_message(filters.command("addurl") & filters.private)
 async def add_autostripe_site(client, message: Message):
     """Add AutoStripe site for user"""
     if len(message.command) < 2:
         return await message.reply(
-            "❌ Please provide a site URL.\n\nExample:\n`/addurl dilaboards.com`",
-            parse_mode=ParseMode.MARKDOWN
+            "❌ Please provide a site URL.\n\nExample:\n<code>/addurl dilaboards.com</code>",
+            parse_mode=ParseMode.HTML
         )
     
     site = message.command[1]
@@ -32,22 +37,31 @@ async def add_autostripe_site(client, message: Message):
     start_time = time.time()
     
     try:
-        # Verify site with AutoStripe
-        result = await verify_autostripe_site(site, TEST_CARD)
+        # Build AutoStripe API URL
+        url = f"{AUTOSTRIPE_BASE_URL}/gateway={AUTOSTRIPE_GATEWAY}/key={AUTOSTRIPE_KEY}/site={site}/cc={TEST_CARD}"
+        
+        async with httpx.AsyncClient(timeout=90.0) as http_client:
+            response = await http_client.get(url)
+            response_text = response.text.strip()
         
         end_time = time.time()
         time_taken = round(end_time - start_time, 2)
         
-        if result and result.get("supported"):
-            gateway = result.get("gateway", "AutoStripe")
-            response = result.get("response", "N/A")
-            gate_name = f"AutoStripe {gateway}"
+        # If we got a response, site is working
+        if response_text and len(response_text) > 0:
+            gate_name = "AutoStripe"
+            
+            # Ensure DATA directory exists
+            os.makedirs("DATA", exist_ok=True)
             
             # Load or create sites.json
             all_sites = {}
             if os.path.exists(SITES_PATH):
-                with open(SITES_PATH, "r", encoding="utf-8") as f:
-                    all_sites = json.load(f)
+                try:
+                    with open(SITES_PATH, "r", encoding="utf-8") as f:
+                        all_sites = json.load(f)
+                except:
+                    all_sites = {}
             
             # Save/overwrite user's site and gate
             all_sites[user_id] = {
@@ -55,24 +69,23 @@ async def add_autostripe_site(client, message: Message):
                 "gate": gate_name
             }
             
-            # Ensure DATA directory exists
-            os.makedirs("DATA", exist_ok=True)
-            
             with open(SITES_PATH, "w", encoding="utf-8") as f:
                 json.dump(all_sites, f, indent=4)
             
             clickableFname = f"<a href='tg://user?id={message.from_user.id}'>{message.from_user.first_name}</a>"
             
+            # Truncate response if too long
+            display_response = response_text[:100] + "..." if len(response_text) > 100 else response_text
+            
             return await wait_msg.edit_text(
-                f"""<pre>Site Added ✅~ AutoStripe ✦</pre>
+                f"""<pre>Site Added ✅ ~ AutoStripe ✦</pre>
 [⌯] <b>Site:</b> <code>{site}</code> 
 [⌯] <b>Gateway:</b> <code>{gate_name}</code> 
-[⌯] <b>Response:</b> <code>{response[:100]}...</code> 
+[⌯] <b>Response:</b> <code>{display_response}</code> 
 [⌯] <b>Cmd:</b> <code>/au</code> | <code>/mau</code>
 [⌯] <b>Time Taken:</b> <code>{time_taken} sec</code> 
 ━━━━━━━━━━━━━
-[⌯] <b>Req By:</b> {clickableFname}
-[⌯] <b>Dev:</b> <a href="tg://resolve?domain=SyncUI">𝙁𝙪𝙧𝙠𝙖𝙣</a>""",
+[⌯] <b>Req By:</b> {clickableFname}""",
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True
             )
@@ -80,15 +93,21 @@ async def add_autostripe_site(client, message: Message):
         else:
             return await wait_msg.edit_text(
                 "<pre>Site Not Supported ❌</pre>\n"
-                "<b>AutoStripe does not support this site.</b>",
+                "<b>No response from AutoStripe API.</b>",
                 parse_mode=ParseMode.HTML
             )
     
+    except httpx.TimeoutException:
+        time_taken = round(time.time() - start_time, 2)
+        return await wait_msg.edit_text(
+            f"<pre>Timeout ❌</pre>\n<b>Request timed out.</b>\n⏱️ Time: <code>{time_taken} sec</code>",
+            parse_mode=ParseMode.HTML
+        )
     except Exception as e:
         time_taken = round(time.time() - start_time, 2)
         return await wait_msg.edit_text(
-            f"⚠️ Error: `{str(e)}`\n⏱️ Time Taken: `{time_taken} sec`",
-            parse_mode=ParseMode.MARKDOWN
+            f"⚠️ Error: <code>{str(e)}</code>\n⏱️ Time: <code>{time_taken} sec</code>",
+            parse_mode=ParseMode.HTML
         )
 
 
@@ -107,8 +126,15 @@ async def show_my_site(client, message: Message):
         )
     
     # Load JSON
-    with open(SITES_PATH, "r", encoding="utf-8") as f:
-        all_sites = json.load(f)
+    try:
+        with open(SITES_PATH, "r", encoding="utf-8") as f:
+            all_sites = json.load(f)
+    except:
+        return await message.reply(
+            "<pre>No Site Found ❌</pre>\n"
+            "<b>Use /addurl to add a site.</b>",
+            parse_mode=ParseMode.HTML
+        )
     
     user_site = all_sites.get(user_id)
     
@@ -142,8 +168,14 @@ async def delete_my_site(client, message: Message):
             parse_mode=ParseMode.HTML
         )
     
-    with open(SITES_PATH, "r", encoding="utf-8") as f:
-        all_sites = json.load(f)
+    try:
+        with open(SITES_PATH, "r", encoding="utf-8") as f:
+            all_sites = json.load(f)
+    except:
+        return await message.reply(
+            "<pre>No Site Found ❌</pre>",
+            parse_mode=ParseMode.HTML
+        )
     
     if user_id not in all_sites:
         return await message.reply(

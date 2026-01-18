@@ -7,7 +7,7 @@ def get_bin_details(bin_number):
         return lookup_bin(bin_number)
     except:
         return {
-            "bin": bin_number,
+            "bin": bin_number[:6] if len(bin_number) >= 6 else bin_number,
             "country": "Unknown",
             "flag": "🏳️",
             "vendor": "Unknown",
@@ -23,6 +23,53 @@ def load_users():
             return json.load(f)
     except:
         return {}
+
+def get_status_flag(raw_response):
+    """Determine status flag from response text"""
+    response_upper = str(raw_response).upper()
+    
+    # Charged keywords
+    if any(keyword in response_upper for keyword in [
+        "CHARGED", "ORDER_PLACED", "ORDER PLACED", "THANK YOU", 
+        "PAYMENT SUCCESS", "PAYMENT_SUCCESS", "APPROVED"
+    ]):
+        return "Charged 💎"
+    
+    # Approved/CCN keywords (card works but declined for other reasons)
+    elif any(keyword in response_upper for keyword in [
+        "SUCCEED", "SUCCESS", "CCN", "CVN", "LIVE",
+        "3DS", "3D_SECURE", "3D SECURE", "3D_AUTHENTICATION",
+        "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS",
+        "INVALID_CVC", "INVALID CVC", "INCORRECT_CVC", "INCORRECT CVC",
+        "CVV", "CVC", "SECURITY CODE",
+        "AUTHENTICATION", "AUTHENTICATE",
+        "ZIP", "POSTAL", "ADDRESS", "BILLING", "AVS",
+        "CARD_ERROR", "CARD ERROR",
+        "RISK", "FRAUD", "SUSPICIOUS",
+        "LIMIT", "EXCEEDED",
+        "DO_NOT_HONOR", "DO NOT HONOR", "DNH",
+        "LOST", "STOLEN", "PICKUP",
+        "RESTRICTED", "NOT_PERMITTED", "NOT PERMITTED",
+        "TRY_AGAIN", "TRY AGAIN"
+    ]):
+        return "Approved ✅"
+    
+    # Declined keywords
+    elif any(keyword in response_upper for keyword in [
+        "DECLINED", "DECLINE", "REJECTED", "REJECT",
+        "FAILED", "FAIL", "DEAD",
+        "INVALID CARD", "INVALID_CARD", "INVALID NUMBER",
+        "CARD_DECLINED", "CARD DECLINED",
+        "NOT SUPPORTED", "UNSUPPORTED",
+        "EXPIRED", "EXPIRE",
+        "BLOCKED", "CLOSED"
+    ]):
+        return "Declined ❌"
+    
+    # Default to Declined for unknown responses
+    else:
+        return "Declined ❌"
+
 
 def format_autostripe_response(cc, mes, ano, cvv, raw_response, timet, profile):
     """Format AutoStripe checker response"""
@@ -45,31 +92,8 @@ def format_autostripe_response(cc, mes, ano, cvv, raw_response, timet, profile):
     # Clean response
     raw_response = str(raw_response) if raw_response else "-"
     
-    # Determine status based on response
-    response_upper = raw_response.upper()
-    
-    # Charged keywords
-    if any(keyword in response_upper for keyword in ["CHARGED", "ORDER_PLACED", "THANK YOU", "PAYMENT SUCCESS"]):
-        status_flag = "Charged 💎"
-    # Approved keywords (including succeed)
-    elif any(keyword in response_upper for keyword in [
-        "SUCCEED", "SUCCESS", "3DS", "3D_SECURE", "3D SECURE",
-        "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS", 
-        "INVALID_CVC", "INVALID CVC", "INCORRECT_CVC", "INCORRECT CVC",
-        "CVV", "CVC", "AUTHENTICATION", "ZIP", "ADDRESS", "BILLING",
-        "CARD_ERROR", "CARD ERROR", "RISK", "FRAUD", "LIMIT",
-        "DO_NOT_HONOR", "DO NOT HONOR", "LOST", "STOLEN"
-    ]):
-        status_flag = "Approved ✅"
-    # Declined keywords
-    elif any(keyword in response_upper for keyword in [
-        "DECLINED", "DECLINE", "REJECTED", "REJECT", "FAILED", "FAIL",
-        "INVALID CARD", "INVALID_CARD", "CARD_DECLINED", "CARD DECLINED",
-        "NOT SUPPORTED", "UNSUPPORTED", "EXPIRED", "DEAD"
-    ]):
-        status_flag = "Declined ❌"
-    else:
-        status_flag = "Declined ❌"
+    # Get status flag
+    status_flag = get_status_flag(raw_response)
     
     # BIN lookup
     bin_data = get_bin_details(cc[:6]) or {}
@@ -113,31 +137,3 @@ def format_autostripe_response(cc, mes, ano, cvv, raw_response, timet, profile):
 <b>[ﾒ] T/t</b>: <code>[{timet} 𝐬]</code> <b>|P/x:</b> [<code>Live ⚡️</code>]
 """
     return status_flag, result
-
-
-def get_status_flag(raw_response):
-    """Determine status flag from response text"""
-    response_upper = str(raw_response).upper()
-    
-    # Charged keywords
-    if any(keyword in response_upper for keyword in ["CHARGED", "ORDER_PLACED", "THANK YOU", "PAYMENT SUCCESS"]):
-        return "Charged 💎"
-    # Approved keywords (including succeed)
-    elif any(keyword in response_upper for keyword in [
-        "SUCCEED", "SUCCESS", "3DS", "3D_SECURE", "3D SECURE",
-        "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS",
-        "INVALID_CVC", "INVALID CVC", "INCORRECT_CVC", "INCORRECT CVC",
-        "CVV", "CVC", "AUTHENTICATION", "ZIP", "ADDRESS", "BILLING", "MISMATCHED",
-        "CARD_ERROR", "CARD ERROR", "RISK", "FRAUD", "LIMIT",
-        "DO_NOT_HONOR", "DO NOT HONOR", "LOST", "STOLEN"
-    ]):
-        return "Approved ✅"
-    # Declined keywords
-    elif any(keyword in response_upper for keyword in [
-        "DECLINED", "DECLINE", "REJECTED", "REJECT", "FAILED", "FAIL",
-        "INVALID CARD", "INVALID_CARD", "CARD_DECLINED", "CARD DECLINED",
-        "NOT SUPPORTED", "UNSUPPORTED", "EXPIRED", "DEAD"
-    ]):
-        return "Declined ❌"
-    else:
-        return "Declined ❌"
