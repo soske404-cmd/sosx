@@ -1,0 +1,12 @@
+# Paste your Medium cookies here
+# Format: uid=xxx; sid=xxx; xsrf=xxx
+# 
+# How to get cookies:
+# 1. Login to medium.com on your browser
+# 2. Open DevTools (F12) > Application > Cookies > medium.com
+# 3. Copy these cookie values: uid, sid, xsrf
+#
+# Example:
+# uid=b5570d256c44; sid=1:SJceTV06Og/u172xjMv92kZFXeqkq9zlFYHWaeZRwh8DeNEJaDl1tBLIZ91c8js7; xsrf=kzvqx3aPa7pqIW1B
+#
+# Paste your cookies below (remove the # at start):
