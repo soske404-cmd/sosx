@@ -26,14 +26,15 @@ class StripeChecker:
     def log_debug(self, title, data):
         """Print debug information"""
         if self.debug:
-            print(f"\n{'='*50}")
-            print(f"[DEBUG] {title}")
-            print(f"{'='*50}")
+            print(f"\n{'#'*55}")
+            print(f"### [DEBUG] {title}")
+            print(f"{'#'*55}")
             if isinstance(data, dict):
-                print(json.dumps(data, indent=2))
+                for key, value in data.items():
+                    print(f"  {key}: {value}")
             else:
-                print(data)
-            print(f"{'='*50}\n")
+                print(f"  {data}")
+            print(f"{'#'*55}")
 
     def generate_guid(self):
         """Generate a random GUID-like string"""
@@ -442,12 +443,14 @@ def main():
         input_file = default_file
     
     # Ask for debug mode
-    print(f"\n[?] Enable debug mode? (y/n, default: n)")
+    print(f"\n[?] Enable debug mode to see API calls? (y/n, default: y)")
     debug_input = input(">>> ").strip().lower()
-    debug_mode = debug_input in ['y', 'yes', '1', 'true']
+    debug_mode = debug_input not in ['n', 'no', '0', 'false']
     
     if debug_mode:
-        print("[*] Debug mode ENABLED - will show full API requests/responses")
+        print("[*] DEBUG MODE ON - showing full API requests/responses")
+    else:
+        print("[*] Debug mode OFF")
     
     # Load cards
     print(f"\n[*] Loading cards from: {input_file}")
