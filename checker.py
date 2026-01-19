@@ -422,12 +422,15 @@ def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
+VERSION = "1.2"
+
 def print_banner():
     """Print checker banner"""
-    banner = """
+    banner = f"""
 ╔══════════════════════════════════════════════════════╗
 ║      STRIPE CARD CHECKER - PYDROID VERSION           ║
 ║           Donately $1 Charge Gateway                 ║
+║                  Version: {VERSION}                        ║
 ╠══════════════════════════════════════════════════════╣
 ║  Format: cc|mm|yy|cvv  (one per line in cards.txt)   ║
 ╚══════════════════════════════════════════════════════╝
