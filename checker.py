@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 
 
-VERSION = "2.1"
+VERSION = "2.2"
 
 
 class StripeChecker:
@@ -216,7 +216,7 @@ class StripeChecker:
     def check_gateway_1(self, cc, month, year, cvv):
         """Gateway 1: Stripe Checkout with real auth"""
         
-        pk_key = 'pk_live_51HJCs4JMowuLNLcaHw7tNBBaDoSVLzGTHUJDEOkCVxr5wPUfMc7xROIhJKlwbGbL6Bvfi8f0DXVK3EqVkxwq7z7O002NeFnbCN'
+        pk_key = 'pk_live_517EDIQCV9djTjhnHFKHnXhM2atKmyZ7oVnyJbnX0DwYNHgeuZRZkxKeHlEUILFe9wVYe1NDS72D34fJgZVbZgCxS00Ghr637bG'
         
         first_name, last_name = self.generate_name()
         email = self.generate_email()
@@ -293,9 +293,9 @@ class StripeChecker:
         return self.parse_setup_intent_response(setup_result)
 
     def check_gateway_2(self, cc, month, year, cvv):
-        """Gateway 2: Alternative Stripe merchant"""
+        """Gateway 2: Alternative Stripe merchant (Donately)"""
         
-        pk_key = 'pk_live_51ObQ3CFIwbWjhUKK9pDcjeHQdhkfNHMZHJhVzgxTyPOQW1qJxSHjnGQfrRPHNL1smlGo84cMDx6fF8FiXtLIJq0x00UXhWwKlD'
+        pk_key = 'pk_live_51MJjGSR9GTt0CcXJYNHenVaATXNyK43YPRgUBgoRQDtrLCnk7YZ8OL7uhrQF3BJAs8vT8dPoKjORWC9JlwSwRiKs00QjcCzQMX'
         
         first_name, last_name = self.generate_name()
         email = self.generate_email()
