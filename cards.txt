@@ -1,0 +1,5 @@
+# Sample cards file - DELETE THESE AND ADD YOUR OWN CARDS
+# Format: cc|mm|yy|cvv (one per line)
+# Example:
+# 4111111111111111|12|25|123
+# 5500000000000004|01|26|456
