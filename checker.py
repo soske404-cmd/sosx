@@ -24,13 +24,17 @@ class StripeChecker:
 
     def generate_guid(self):
         """Generate a random GUID-like string"""
-        hex_chars = string.hexdigits[:16]
-        part1 = ''.join(random.choices(hex_chars, k=8))
-        part2 = ''.join(random.choices(hex_chars, k=4))
-        part3 = '4' + ''.join(random.choices(hex_chars, k=3))
-        part4 = random.choice('89ab') + ''.join(random.choices(hex_chars, k=3))
-        part5 = ''.join(random.choices(hex_chars, k=12))
-        return f"{part1}-{part2}-{part3}-{part4}-{part5}"
+        hex_chars = '0123456789abcdef'
+        
+        def random_hex(length):
+            return ''.join(random.choice(hex_chars) for _ in range(length))
+        
+        part1 = random_hex(8)
+        part2 = random_hex(4)
+        part3 = '4' + random_hex(3)
+        part4 = random.choice('89ab') + random_hex(3)
+        part5 = random_hex(12)
+        return part1 + '-' + part2 + '-' + part3 + '-' + part4 + '-' + part5
 
     def generate_token(self, card_data):
         url = 'https://api.stripe.com/v1/tokens'
