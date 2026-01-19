@@ -1,0 +1,13 @@
+# Sample cards file for Pydroid Card Checker
+# Format: cc|mm|yy|cvv (one per line)
+# Delete these sample lines and add your cards
+#
+# Examples:
+# 4111111111111111|12|25|123
+# 5500000000000004|08|26|456
+#
+# Supported formats:
+# cc|mm|yy|cvv
+# cc|mm|yyyy|cvv
+# cc:mm:yy:cvv
+#
