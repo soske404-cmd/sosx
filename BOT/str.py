@@ -141,22 +141,45 @@ async def check_autostripe(site, cc):
     except:
         return "Error"
 
+def is_free_user(user_id):
+    """Check if user has free plan"""
+    try:
+        users = load_users()
+        user = users.get(str(user_id))
+        if not user:
+            return True
+        plan = user.get("plan", {}).get("plan", "Free")
+        return plan in ["Free", "Redeem Code"]
+    except:
+        return True
+
 @Client.on_message(filters.command("str") | filters.regex(r"^\.str(\s|$)"))
 async def handle_autostripe(client, message):
     try:
         allowed_groups = load_allowed_groups()
+        user_id = str(message.from_user.id)
         
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP] and message.chat.id not in allowed_groups:
-            return await message.reply(
-                "<pre>Notification ❗️</pre>\n"
-                "<b>~ Message :</b> <code>This Group Is Not Approved ⚠️</code>\n"
-                "<b>~ Contact  →</b> <b>@itzspoooky</b>\n"
-                "━━━━━━━━━━━━━\n"
-                "<b>Contact Owner For Approving</b>"
-            )
+        # Check if in private chat
+        if message.chat.type == ChatType.PRIVATE:
+            if is_free_user(user_id):
+                return await message.reply(
+                    "<pre>Notification ❗️</pre>\n"
+                    "<b>~ Message :</b> <code>Free users can only check in groups!</code>\n"
+                    "<b>~ Get Premium to use in private</b>\n"
+                    "━━━━━━━━━━━━━\n"
+                    "<b>Type <code>/buy</code> to get Premium.</b>",
+                    reply_to_message_id=message.id
+                )
+        elif message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            if message.chat.id not in allowed_groups:
+                return await message.reply(
+                    "<pre>Notification ❗️</pre>\n"
+                    "<b>~ Message :</b> <code>This Group Is Not Approved ⚠️</code>\n"
+                    "━━━━━━━━━━━━━\n"
+                    "<b>Contact Owner For Approving</b>"
+                )
         
         users = load_users()
-        user_id = str(message.from_user.id)
         
         if user_id not in users:
             return await message.reply(

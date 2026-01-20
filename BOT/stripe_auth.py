@@ -161,20 +161,45 @@ async def check_stripe_auth(cc, mm, yy, cvv):
     except Exception as e:
         return {"error": {"message": str(e)}}
 
+def is_free_user(user_id):
+    """Check if user has free plan"""
+    try:
+        users = load_users()
+        user = users.get(str(user_id))
+        if not user:
+            return True
+        plan = user.get("plan", {}).get("plan", "Free")
+        return plan in ["Free", "Redeem Code"]
+    except:
+        return True
+
 @Client.on_message(filters.command("au") | filters.regex(r"^\.au(\s|$)"))
 async def stripe_auth_single(client, message):
     """Single card Stripe Auth checker"""
     try:
         allowed_groups = load_allowed_groups()
+        user_id = str(message.from_user.id)
         
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP] and message.chat.id not in allowed_groups:
-            return await message.reply(
-                "<pre>Notification ❗️</pre>\n"
-                "<b>~ Message :</b> <code>This Group Is Not Approved ⚠️</code>",
-            )
+        # Check if in private chat
+        if message.chat.type == ChatType.PRIVATE:
+            # Free users cannot use in private
+            if is_free_user(user_id):
+                return await message.reply(
+                    "<pre>Notification ❗️</pre>\n"
+                    "<b>~ Message :</b> <code>Free users can only check in groups!</code>\n"
+                    "<b>~ Get Premium to use in private</b>\n"
+                    "━━━━━━━━━━━━━\n"
+                    "<b>Type <code>/buy</code> to get Premium.</b>",
+                    reply_to_message_id=message.id
+                )
+        elif message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            if message.chat.id not in allowed_groups:
+                return await message.reply(
+                    "<pre>Notification ❗️</pre>\n"
+                    "<b>~ Message :</b> <code>This Group Is Not Approved ⚠️</code>",
+                )
         
         users = load_users()
-        user_id = str(message.from_user.id)
         
         if user_id not in users:
             return await message.reply(
@@ -274,18 +299,32 @@ async def stripe_auth_mass(client, message):
     
     try:
         users = load_users()
-        
-        if user_id not in users:
-            return await message.reply(
-                "<pre>Access Denied 🚫</pre>\n<b>Register first using</b> <code>/register</code>",
-                reply_to_message_id=message.id
-            )
-        
         allowed_groups = load_allowed_groups()
         
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP] and message.chat.id not in allowed_groups:
+        # Check if in private chat
+        if message.chat.type == ChatType.PRIVATE:
+            if is_free_user(user_id):
+                user_locks.pop(user_id, None)
+                return await message.reply(
+                    "<pre>Notification ❗️</pre>\n"
+                    "<b>~ Message :</b> <code>Free users can only check in groups!</code>\n"
+                    "<b>~ Get Premium to use in private</b>\n"
+                    "━━━━━━━━━━━━━\n"
+                    "<b>Type <code>/buy</code> to get Premium.</b>",
+                    reply_to_message_id=message.id
+                )
+        elif message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            if message.chat.id not in allowed_groups:
+                user_locks.pop(user_id, None)
+                return await message.reply(
+                    "<pre>Notification ❗️</pre>\n<b>This Group Is Not Approved ⚠️</b>",
+                    reply_to_message_id=message.id
+                )
+        
+        if user_id not in users:
+            user_locks.pop(user_id, None)
             return await message.reply(
-                "<pre>Notification ❗️</pre>\n<b>This Group Is Not Approved ⚠️</b>",
+                "<pre>Access Denied 🚫</pre>\n<b>Register first using</b> <code>/register</code>",
                 reply_to_message_id=message.id
             )
         
