@@ -100,7 +100,7 @@ async def add_autostripe_site(client, message: Message):
             f"""<pre>Site Added ✅ ~ AutoStripe ✦</pre>
 [⌯] <b>Site:</b> <code>{site}</code> 
 [⌯] <b>Gateway:</b> <code>{gate_name}</code> 
-[⌯] <b>Cmd:</b> <code>/au</code> | <code>/mau</code>
+[⌯] <b>Cmd:</b> <code>/str</code> | <code>/mstr</code>
 [⌯] <b>Time:</b> <code>{time_taken}s</code> 
 ━━━━━━━━━━━━━
 [⌯] <b>Req By:</b> {clickableFname}""",
@@ -154,7 +154,7 @@ async def show_my_site(client, message: Message):
 [⌯] <b>Site:</b> <code>{user_site['site']}</code>
 [⌯] <b>Gateway:</b> <code>{user_site.get('gate', 'AutoStripe')}</code>
 ━━━━━━━━━━━━━
-[⌯] <b>Cmd:</b> <code>/au</code> | <code>/mau</code>
+[⌯] <b>Cmd:</b> <code>/str</code> | <code>/mstr</code>
 [⌯] <b>Req By:</b> {clickableFname}""",
         parse_mode=ParseMode.HTML
     )

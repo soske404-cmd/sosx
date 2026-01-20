@@ -131,8 +131,8 @@ async def check_autostripe(site, cc):
     except:
         return "Error"
 
-@Client.on_message(filters.command("mau") | filters.regex(r"^\.mau(\s|$)"))
-async def mau_handler(client, message):
+@Client.on_message(filters.command("mstr") | filters.regex(r"^\.mstr(\s|$)"))
+async def mstr_handler(client, message):
     user_id = str(message.from_user.id)
     
     if not message.from_user:
@@ -140,7 +140,7 @@ async def mau_handler(client, message):
     
     if user_id in user_locks:
         return await message.reply(
-            "<pre>⚠️ Wait!</pre>\n<b>Your previous /mau is still processing.</b>",
+            "<pre>⚠️ Wait!</pre>\n<b>Your previous /mstr is still processing.</b>",
             reply_to_message_id=message.id
         )
     

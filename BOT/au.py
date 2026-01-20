@@ -141,7 +141,7 @@ async def check_autostripe(site, cc):
     except:
         return "Error"
 
-@Client.on_message(filters.command("au") | filters.regex(r"^\.au(\s|$)"))
+@Client.on_message(filters.command("str") | filters.regex(r"^\.str(\s|$)"))
 async def handle_autostripe(client, message):
     try:
         allowed_groups = load_allowed_groups()
@@ -185,14 +185,14 @@ async def handle_autostripe(client, message):
         
         if not target_text:
             return await message.reply(
-                "<pre>CC Not Found ❌</pre>\n<b>Usage:</b> <code>/au cc|mm|yy|cvv</code>",
+                "<pre>CC Not Found ❌</pre>\n<b>Usage:</b> <code>/str cc|mm|yy|cvv</code>",
                 reply_to_message_id=message.id
             )
         
         extracted = extract_card(target_text)
         if not extracted:
             return await message.reply(
-                "<pre>Invalid Format ❌</pre>\n<b>Usage:</b> <code>/au cc|mm|yy|cvv</code>",
+                "<pre>Invalid Format ❌</pre>\n<b>Usage:</b> <code>/str cc|mm|yy|cvv</code>",
                 reply_to_message_id=message.id
             )
         
